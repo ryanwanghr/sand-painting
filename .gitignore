@@ -1,0 +1,13 @@
+# Godot cache and generated exports
+.godot/
+/builds/
+/export_credentials.cfg
+
+# Editor and OS files
+.DS_Store
+*.swp
+
+# Local secrets
+.env
+.env.*
+!.env.example
