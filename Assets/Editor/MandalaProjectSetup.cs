@@ -32,7 +32,7 @@ namespace Mandala.Editor
             new GameObject("Welcome", typeof(MandalaWelcome));
 
             PlayerSettings.companyName = "Mandala";
-            PlayerSettings.productName = "Mandala";
+            PlayerSettings.productName = "Sand Painting!";
             PlayerSettings.defaultScreenWidth = 1280;
             PlayerSettings.defaultScreenHeight = 800;
             EditorSettings.serializationMode = SerializationMode.ForceText;

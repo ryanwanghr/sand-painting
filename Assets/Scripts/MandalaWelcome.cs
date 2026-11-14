@@ -15,7 +15,7 @@ namespace Mandala
             };
             style.normal.textColor = new Color(0.9f, 0.85f, 0.72f);
             GUI.Label(new Rect(24, 0, Mathf.Max(0, Screen.width - 48), Screen.height),
-                "Mandala\nA sand-making game\n\nUnity project ready — gameplay port comes next.", style);
+                "Sand Painting!\nA sand-making game\n\nUnity project ready — gameplay port comes next.", style);
         }
     }
 }

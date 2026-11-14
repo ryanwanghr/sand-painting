@@ -32,4 +32,4 @@ historical snapshot and should be rechecked when relevant.
 Use the web prototype to compare behavior. Reimplement the simulation and UI in
 Unity using C#; TypeScript and browser-specific APIs are reference material.
 
-Choose release platforms and a permanent title before configuring distribution.
+The game title is Sand Painting!. Choose release platforms before configuring distribution.

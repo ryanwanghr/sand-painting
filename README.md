@@ -1,6 +1,6 @@
-# Mandala
+# Sand Painting!
 
-An independent sand mandala game built with Unity. Mandala is a working title.
+An independent sand painting game built with Unity.
 
 This repository starts the standalone remake of Ripple Compassion's `/mandala`
 experience. It contains a Unity starter project and the original design plan;
