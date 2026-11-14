@@ -23,13 +23,13 @@ historical snapshot and should be rechecked when relevant.
 
 ## First playable milestone
 
-1. Build a sand tray and pointer/touch pouring in Godot.
+1. Build a sand tray and pointer/touch pouring in Unity.
 2. Port one pattern, its region boundaries, and a small color palette.
 3. Tune grain movement and rendering before expanding pattern content.
 4. Add brush interaction, movement-driven audio, and deliberate dissolution.
 5. Add local saves and exports appropriate to the standalone game.
 
 Use the web prototype to compare behavior. Reimplement the simulation and UI in
-Godot; TypeScript and browser-specific APIs are reference material.
+Unity using C#; TypeScript and browser-specific APIs are reference material.
 
 Choose release platforms and a permanent title before configuring distribution.

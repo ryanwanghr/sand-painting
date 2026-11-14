@@ -1,25 +1,27 @@
 # Mandala
 
-An independent sand mandala game built with Godot. Mandala is a working title.
+An independent sand mandala game built with Unity. Mandala is a working title.
 
 This repository starts the standalone remake of Ripple Compassion's `/mandala`
-experience. It currently contains a Godot starter scene and the original design
-plan; the gameplay has not been ported yet.
+experience. It contains a Unity starter project and the original design plan;
+the gameplay has not been ported yet.
 
 ## Run
 
-1. Install Godot 4 (standard edition; C# is not required).
-2. Import `project.godot` in the Godot project manager.
-3. Open the project and press F6 to run the current scene, or F5 to run the game.
+1. In Unity Hub, add this repository using **Add project from disk**.
+2. Open it with Unity **6000.2.10f1**, the installed version used to create it.
+3. Open `Assets/Scenes/Main.unity` and press Play.
 
-If Godot is on your PATH, use `godot --editor --path .` to open the project.
+The starter scene contains a camera and a placeholder welcome screen.
 
 ## Layout
 
-- `project.godot`: standalone Godot project configuration.
-- `scenes/main.tscn`: initial entry scene.
+- `Assets/`: game scenes, scripts, and their Unity metadata.
+- `Packages/`: Unity package dependencies and lockfile.
+- `ProjectSettings/`: shared editor and player configuration.
 - `docs/original-design-plan.md`: design and research snapshot from the web prototype.
 - `docs/porting.md`: source locations and initial porting priorities.
 
-Godot caches and build exports are excluded from Git. This project has no npm,
-Next.js, or Supabase dependency.
+Commit Unity `.meta` files alongside their assets. Caches, local editor settings,
+and build outputs are excluded from Git. This project has no npm, Next.js, or
+Supabase dependency.
