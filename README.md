@@ -9,10 +9,12 @@ the gameplay has not been ported yet.
 ## Run
 
 1. In Unity Hub, add this repository using **Add project from disk**.
-2. Open it with Unity **6000.2.10f1**, the installed version used to create it.
+2. Open it with Unity **6000.6.9f1**.
 3. Open `Assets/Scenes/Main.unity` and press Play.
 
 The starter scene contains a camera and a placeholder welcome screen.
+
+For the Neovim, Codex, and Unity CLI workflow, see [Development setup](docs/development.md).
 
 ## Layout
 
