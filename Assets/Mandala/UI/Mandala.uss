@@ -1,0 +1,37 @@
+.screen { flex-grow: 1; background-color: #233d37; color: #f0e3bd; padding: 16px; }
+.eyebrow { font-size: 13px; letter-spacing: 4px; -unity-text-align: middle-center; margin-top: 4px; color: #cbb988; }
+.title { font-size: 23px; -unity-text-align: middle-center; white-space: normal; margin-top: 6px; margin-bottom: 6px; }
+.progress { font-size: 13px; -unity-text-align: middle-center; color: #d6d9c6; margin-bottom: 6px; }
+.tray-space { flex-grow: 1; flex-shrink: 1; min-height: 80px; align-items: center; justify-content: center; overflow: hidden; }
+.tray { flex-shrink: 0; overflow: hidden; }
+.message { min-height: 40px; font-size: 13px; white-space: normal; -unity-text-align: middle-center; margin-top: 8px; margin-bottom: 4px; }
+.row { flex-direction: row; flex-shrink: 0; }
+Button { flex-grow: 1; flex-basis: 0; min-height: 46px; margin: 3px; border-width: 1px; border-color: #718277; border-radius: 10px; background-color: #304f46; color: #f4ead2; font-size: 15px; -unity-text-align: middle-center; }
+Button:active { background-color: #567163; }
+Button:disabled { opacity: 0.45; }
+Button.selected { border-color: #f8edce; border-width: 3px; background-color: #536c54; }
+.palette { margin-top: 2px; margin-bottom: 8px; }
+.swatch { min-height: 48px; border-radius: 24px; color: #192b27; -unity-font-style: bold; }
+.marigold { background-color: #d8a740; }
+.terracotta { background-color: #bc6751; }
+.lagoon { background-color: #558e88; }
+.ivory { background-color: #f0e3bd; }
+.indigo { background-color: #696e98; }
+.swatch.selected { border-color: #fff8df; }
+.swatch.marigold.selected { background-color: #d8a740; }
+.swatch.terracotta.selected { background-color: #bc6751; }
+.swatch.lagoon.selected { background-color: #558e88; }
+.swatch.ivory.selected { background-color: #f0e3bd; }
+.swatch.indigo.selected { background-color: #696e98; }
+.dialog-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(12,25,22,0.86); align-items: center; justify-content: center; }
+.dialog-card { background-color: #304f46; border-radius: 18px; padding: 20px; margin: 24px; max-width: 420px; }
+.dialog-text { white-space: normal; font-size: 16px; margin-bottom: 16px; -unity-text-align: middle-center; }
+.dialog-card Button { flex-grow: 0; flex-basis: auto; }
+.hidden { display: none; }
+.tool-button { flex-direction: column; align-items: center; justify-content: center; min-height: 66px; padding-left: 2px; padding-right: 2px; }
+.tool-icon { width: 38px; height: 42px; flex-shrink: 0; }
+.tool-caption { font-size: 14px; padding: 0; margin: 0; }
+.rake-patterns Button { min-height: 42px; font-size: 13px; }
+
+.guide-labels { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; }
+.guide-number { position: absolute; padding: 0; margin: 0; color: #434a3f; -unity-text-align: middle-center; -unity-font-style: bold; }
