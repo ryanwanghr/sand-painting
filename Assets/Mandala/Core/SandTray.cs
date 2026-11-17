@@ -37,7 +37,9 @@ namespace Mandala.Game
         Vector2 vacuumPoint;
         Vector2 pourFrom, pourTo;
         float pourRadius;
-        static readonly int[] Forward = { 1, -Size, -1, Size }, Reverse = { -1, Size, 1, -Size };
+        static readonly int[] Forward = { 1, 2 - Size, 1 - Size, 1 - 2 * Size, -Size, -1 - 2 * Size, -1 - Size, -2 - Size,
+            -1, -2 + Size, -1 + Size, -1 + 2 * Size, Size, 1 + 2 * Size, 1 + Size, 2 + Size };
+        static readonly int[] Reverse = Array.ConvertAll(Forward, direction => -direction);
 
         public struct Grain { public int Cell, Color; public float Lift, Velocity; }
         public struct SuctionGrain
@@ -360,12 +362,39 @@ namespace Mandala.Game
         }
         void Relax(int i, int[] directions, int slope)
         {
-            foreach (int d in directions)
+            int target = -1, color = Top(i);
+            float steepest = slope;
+            uint hash = (uint)(i + tick * 19391);
+            hash = (hash ^ (hash >> 16)) * 0x7feb352d;
+            int start = (int)(hash ^ (hash >> 15)) & 15;
+            for (int n = 0; n < directions.Length; n++)
             {
-                int target = i + d;
-                if (!Playable(target % Size, target / Size) || Heights[i] - Heights[target] <= slope || Heights[target] + pending[target] >= Levels || !Accepts(target, Top(i))) continue;
-                Add(target, Remove(i)); break;
+                int index = (start + n) & 15, d = directions[index], neighbor = i + d;
+                if (!Playable(neighbor % Size, neighbor / Size) || Heights[neighbor] + pending[neighbor] >= Levels || !Accepts(neighbor, color)) continue;
+                bool rolling = (index & 1) != 0;
+                float distance = rolling ? 2.23606798f : (index & 3) == 2 ? 1.41421356f : 1;
+                int drop = Heights[i] - Heights[neighbor];
+                if (distance > 1)
+                {
+                    // Stable rounding retains sub-layer distance differences without grid-shaped piles.
+                    uint edge = (uint)Mathf.Min(i, neighbor) * 0x9e3779b9u ^ (uint)Mathf.Max(i, neighbor);
+                    edge = (edge ^ (edge >> 16)) * 0x7feb352du;
+                    float rounding = (edge & 65535) / 65536f;
+                    if (drop <= slope * distance + rounding) continue;
+                }
+                float gradient = drop / distance;
+                if (gradient <= steepest) continue;
+                if (rolling)
+                {
+                    int dy = Mathf.RoundToInt((float)d / Size), dx = d - dy * Size;
+                    int sx = Math.Sign(dx), sy = Math.Sign(dy);
+                    int diagonal = i + sx + sy * Size, straight = i + (Mathf.Abs(dx) == 2 ? sx : sy * Size);
+                    if (!Playable(diagonal % Size, diagonal / Size) || !Playable(straight % Size, straight / Size)
+                        || Protected(diagonal) || Protected(straight) || Mathf.Min(Heights[diagonal], Heights[straight]) > Heights[i]) continue;
+                }
+                steepest = gradient; target = neighbor;
             }
+            if (target >= 0) Add(target, Remove(i));
         }
         public Snapshot Capture()
         {

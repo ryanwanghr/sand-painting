@@ -9,6 +9,73 @@ namespace Mandala.Game.Editor
     {
         static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 
+        [MenuItem("Tools/Mandala/Run Round Pile Checks")]
+        public static string RunPileShape()
+        {
+            float worstRatio = 0;
+            foreach (int seed in new[] { 17, 42 })
+            {
+                var tray = new SandTray(seed) { Protection = false };
+                Vector2 center = seed == 42 ? new Vector2(220, 220) : new Vector2(220.25f, 219.75f);
+                int emitted = 0;
+                float previousRadius = 0;
+                for (int frame = 1; frame <= 720; frame++)
+                {
+                    emitted += tray.Apply(SandTool.Pour, center, center, 16, 0, 1f / 60);
+                    tray.Step(1f / 60);
+                    if (frame % 60 == 0) Require(tray.Mass() + tray.Grains.Count == emitted,
+                        "Spreading a held pour must conserve every accepted grain.");
+                    if (frame != 120 && frame != 360 && frame != 720) continue;
+                    var radii = new float[16];
+                    Vector2 moment = Vector2.zero;
+                    int mass = tray.Mass();
+                    for (int i = 0; i < SandTray.CellCount; i++)
+                    {
+                        int height = tray.Heights[i]; if (height == 0) continue;
+                        Vector2 delta = new Vector2(i % SandTray.Size + .5f, i / SandTray.Size + .5f) - center;
+                        int sector = Mathf.FloorToInt((Mathf.Atan2(delta.y, delta.x) + Mathf.PI) * 8 / Mathf.PI) % 16;
+                        radii[sector] = Mathf.Max(radii[sector], delta.magnitude);
+                        moment += delta * height;
+                    }
+                    float min = float.PositiveInfinity, max = 0, average = 0;
+                    foreach (float radius in radii) { min = Mathf.Min(min, radius); max = Mathf.Max(max, radius); average += radius / 16; }
+                    float ratio = max / min;
+                    worstRatio = Mathf.Max(worstRatio, ratio);
+                    Require(ratio < 1.15f, "Held pours must grow roughly circularly rather than along grid axes or diagonals.");
+                    Require((moment / mass).magnitude < .5f, "A stationary pour must remain centered beneath its tip.");
+                    if (previousRadius > 0) Require(average > previousRadius + 3,
+                        "Holding a pour longer must spread its footprint outward.");
+                    previousRadius = average;
+                }
+                tray.EndStroke();
+                for (int frame = 0; frame < 30; frame++) tray.Step(1f / 60);
+                Require(tray.Grains.Count == 0 && tray.Mass() == emitted, "Releasing a round pile must land its tail without losing sand.");
+                foreach (var grain in tray.Layers) Require(grain == 0, "Settling must retain the poured color.");
+            }
+            var blocked = new SandTray(42);
+            int source = 220 * SandTray.Size + 220;
+            for (int y = 219; y <= 221; y++) for (int x = 219; x <= 221; x++)
+            {
+                int i = y * SandTray.Size + x;
+                for (int h = 0; h < SandTray.Levels; h++) blocked.Add(i, 0);
+                if (i != source) blocked.Locked[i] = true;
+            }
+            int before = blocked.Mass();
+            blocked.Step(1f / 60);
+            Require(blocked.Heights[source] == SandTray.Levels && blocked.Mass() == before,
+                "Short rolling paths must not leap over a full ring of protected sand.");
+            blocked.Clear(); blocked.Protection = false;
+            for (int y = 219; y <= 221; y++) for (int x = 219; x <= 221; x++)
+            {
+                int i = y * SandTray.Size + x;
+                for (int h = 0; h < (i == source ? 12 : SandTray.Levels); h++) blocked.Add(i, i == source ? 1 : 0);
+            }
+            blocked.Step(1f / 60);
+            Require(blocked.Heights[source] == 12 && blocked.Top(source) == 1,
+                "Sand must not roll uphill over an intervening raised barrier.");
+            return $"Round pile checks passed: 2-, 6-, and 12-second held pours, two seeds and tip alignments, worst sector radius ratio {worstRatio:F2}, centered outward growth, exact mass and color conservation, release tail, protected and raised barriers.";
+        }
+
         [MenuItem("Tools/Mandala/Run Pour Checks")]
         public static string RunPour()
         {

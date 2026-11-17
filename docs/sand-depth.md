@@ -37,6 +37,23 @@ Holding the tip builds a pile instead of distributing every new grain into the
 lowest cells across the whole footprint. Falling grains, original colors,
 protected sections, stack limits, saves, and undo continue to apply.
 
+Settling examines 16 nearby downhill directions, including diagonal and short
+rolling paths, and chooses the steepest available slope. Distances include stable
+whole-layer rounding so a held pour spreads approximately circularly instead of
+forming a diamond or square. Short rolling paths respect intervening protected
+cells and raised barriers.
+Direction tie-breaking varies across cells and simulation steps. Protected sand
+and the tray boundary still constrain spreading.
+
+**Tools > Mandala > Run Round Pile Checks** verifies centered, roughly circular
+outward growth during 2-, 6-, and 12-second stationary pours at two tip alignments,
+as well as mass/color conservation and the release tail.
+
+![Round pile growth at 2, 6, and 12 seconds](screenshots/round-pour-growth.png)
+
+These isolated, unobstructed stationary pours show outward growth from left to
+right at the same view scale. The contour retains small grain-level variations.
+
 **Tools > Mandala > Run Pour Checks** verifies increased total flow, a thicker
 center, a feathered edge, moving trail continuity, sampling consistency, landing,
 snapshots, protection, color changes during a pour, and saturated piles.
