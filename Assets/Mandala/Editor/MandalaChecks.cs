@@ -19,19 +19,21 @@ namespace Mandala.Game.Editor
                 Vector2 center = seed == 42 ? new Vector2(220, 220) : new Vector2(220.25f, 219.75f);
                 int emitted = 0;
                 float previousRadius = 0;
-                for (int frame = 1; frame <= 720; frame++)
+                int previousFootprint = 0;
+                for (int frame = 1; frame <= 3600; frame++)
                 {
-                    emitted += tray.Apply(SandTool.Pour, center, center, 16, 0, 1f / 60);
+                    emitted += tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 0, 1f / 60);
                     tray.Step(1f / 60);
                     if (frame % 60 == 0) Require(tray.Mass() + tray.Grains.Count == emitted,
                         "Spreading a held pour must conserve every accepted grain.");
-                    if (frame != 120 && frame != 360 && frame != 720) continue;
+                    if (frame != 120 && frame != 360 && frame != 720 && frame != 1800 && frame != 3600) continue;
                     var radii = new float[16];
                     Vector2 moment = Vector2.zero;
-                    int mass = tray.Mass();
+                    int mass = tray.Mass(), footprint = 0;
                     for (int i = 0; i < SandTray.CellCount; i++)
                     {
                         int height = tray.Heights[i]; if (height == 0) continue;
+                        footprint++;
                         Vector2 delta = new Vector2(i % SandTray.Size + .5f, i / SandTray.Size + .5f) - center;
                         int sector = Mathf.FloorToInt((Mathf.Atan2(delta.y, delta.x) + Mathf.PI) * 8 / Mathf.PI) % 16;
                         radii[sector] = Mathf.Max(radii[sector], delta.magnitude);
@@ -43,9 +45,23 @@ namespace Mandala.Game.Editor
                     worstRatio = Mathf.Max(worstRatio, ratio);
                     Require(ratio < 1.15f, "Held pours must grow roughly circularly rather than along grid axes or diagonals.");
                     Require((moment / mass).magnitude < .5f, "A stationary pour must remain centered beneath its tip.");
-                    if (previousRadius > 0) Require(average > previousRadius + 3,
+                    if (previousRadius > 0 && frame <= 720) Require(average > previousRadius * 1.05f && footprint > previousFootprint * 1.10f,
                         "Holding a pour longer must spread its footprint outward.");
-                    previousRadius = average;
+                    previousRadius = average; previousFootprint = footprint;
+                    if (frame < 720) continue;
+                    // Sparse outliers can hide a square dense body; check the opaque contour separately.
+                    var denseRadii = new float[32];
+                    for (int i = 0; i < SandTray.CellCount; i++)
+                    {
+                        if (tray.Heights[i] < 5) continue;
+                        Vector2 delta = new Vector2(i % SandTray.Size + .5f, i / SandTray.Size + .5f) - center;
+                        int sector = Mathf.FloorToInt((Mathf.Atan2(delta.y, delta.x) + Mathf.PI) * 16 / Mathf.PI) % 32;
+                        denseRadii[sector] = Mathf.Max(denseRadii[sector], delta.magnitude);
+                    }
+                    float denseMin = float.PositiveInfinity, denseMax = 0;
+                    foreach (float radius in denseRadii) { denseMin = Mathf.Min(denseMin, radius); denseMax = Mathf.Max(denseMax, radius); }
+                    Require(denseMax / denseMin < 1.10f,
+                        $"The opaque pile contour must remain round during a {frame / 60}-second hold (seed {seed}, ratio {denseMax / denseMin:F3}).");
                 }
                 tray.EndStroke();
                 for (int frame = 0; frame < 30; frame++) tray.Step(1f / 60);
@@ -73,21 +89,21 @@ namespace Mandala.Game.Editor
             blocked.Step(1f / 60);
             Require(blocked.Heights[source] == 12 && blocked.Top(source) == 1,
                 "Sand must not roll uphill over an intervening raised barrier.");
-            return $"Round pile checks passed: 2-, 6-, and 12-second held pours, two seeds and tip alignments, worst sector radius ratio {worstRatio:F2}, centered outward growth, exact mass and color conservation, release tail, protected and raised barriers.";
+            return $"Round pile checks passed: 2-, 6-, 12-, 30-, and 60-second held pours, two seeds and tip alignments, round opaque contours, worst outer sector radius ratio {worstRatio:F2}, centered growth, exact mass and color conservation, release tail, protected and raised barriers.";
         }
 
         [MenuItem("Tools/Mandala/Run Pour Checks")]
         public static string RunPour()
         {
             var center = new Vector2(220, 220);
-            SandTray Pour(int frequency, float seconds, Vector2 from, Vector2 to)
+            SandTray Pour(int frequency, float seconds, Vector2 from, Vector2 to, float radius = SandTray.PourRadius)
             {
                 var sand = new SandTray(42) { Protection = false };
                 int frames = Mathf.RoundToInt(seconds * frequency);
                 for (int frame = 0; frame < frames; frame++)
                 {
                     sand.Apply(SandTool.Pour, Vector2.Lerp(from, to, (float)frame / frames),
-                        Vector2.Lerp(from, to, (float)(frame + 1) / frames), 16, 0, 1f / frequency);
+                        Vector2.Lerp(from, to, (float)(frame + 1) / frames), radius, 0, 1f / frequency);
                     sand.Step(1f / frequency);
                 }
                 return sand;
@@ -96,23 +112,25 @@ namespace Mandala.Game.Editor
             var tray = Pour(60, 1, center, center);
             var saved = tray.Capture();
             float core = 0, fringe = 0; int coreCells = 0, fringeCells = 0;
-            for (int y = 204; y <= 236; y++) for (int x = 204; x <= 236; x++)
+            float radiusSq = SandTray.PourRadius * SandTray.PourRadius;
+            int extent = Mathf.CeilToInt(SandTray.PourRadius);
+            for (int y = 220 - extent; y <= 220 + extent; y++) for (int x = 220 - extent; x <= 220 + extent; x++)
             {
                 float distance = (new Vector2(x + .5f, y + .5f) - center).sqrMagnitude;
                 int height = saved.Heights[y * SandTray.Size + x];
-                if (distance < 64) { core += height; coreCells++; }
-                if (distance > 144 && distance < 256) { fringe += height; fringeCells++; }
+                if (distance < radiusSq * .25f) { core += height; coreCells++; }
+                if (distance > radiusSq * .5625f && distance < radiusSq) { fringe += height; fringeCells++; }
             }
             core /= coreCells; fringe /= fringeCells;
             Require(core >= 3 && core > fringe * 1.8f && fringe > 0,
                 "A one-second pour must build a substantial core with a lighter, nonempty fringe.");
 
-            int footprint = 0;
-            for (int y = 204; y <= 236; y++) for (int x = 204; x <= 236; x++)
-                if ((new Vector2(x + .5f, y + .5f) - center).sqrMagnitude <= 256) footprint++;
             var longer = Pour(60, 2, center, center);
-            float flowGain = (float)Total(longer) / (footprint * 2 * 2);
-            Require(flowGain > 1.4f && flowGain < 1.6f, "The average pour flow must be about 1.5 times its previous two layers per second.");
+            float flowGain = Total(longer) / (Mathf.PI * 16 * 16 * 3 * 2);
+            Require(flowGain > 1.4f && flowGain < 1.6f, "The smaller nozzle must pour about 1.5 times as much sand as the previous stream.");
+            var wider = Pour(60, 2, center, center, 16);
+            Require(Mathf.Abs(Total(wider) - Total(longer)) < Total(wider) * .05f,
+                "Changing nozzle area must preserve the stream's total flow.");
 
             int savedMass = 0;
             foreach (byte height in saved.Heights) savedMass += height;
@@ -139,9 +157,9 @@ namespace Mandala.Game.Editor
 
             tray.Clear();
             for (int i = 0; i < SandTray.CellCount; i++) tray.Locked[i] = true;
-            Require(tray.Apply(SandTool.Pour, center, center, 16, 4, 1) == 0 && tray.Grains.Count == 0,
+            Require(tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 4, 1) == 0 && tray.Grains.Count == 0,
                 "Protected cells must reject a wrong-color concentrated pour.");
-            Require(tray.Apply(SandTool.Pour, center, center, 16, 0, 1) > 0,
+            Require(tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 0, 1) > 0,
                 "Protected cells must still accept their matching pour color.");
 
             tray.Clear(); tray.Protection = false;
@@ -149,7 +167,7 @@ namespace Mandala.Game.Editor
             for (int frame = 0; frame < 90; frame++)
             {
                 int color = frame / 18;
-                emitted[color] += tray.Apply(SandTool.Pour, center, center, 16, color, 1f / 60);
+                emitted[color] += tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, color, 1f / 60);
                 tray.Step(1f / 60);
             }
             for (int frame = 0; frame < 30; frame++) tray.Step(1f / 60);
@@ -160,7 +178,7 @@ namespace Mandala.Game.Editor
                 "Switching pour colors with grains still falling must preserve every emitted color.");
 
             tray.Clear(); tray.Protection = false;
-            tray.Apply(SandTool.Pour, center, center, 16, 0, 10);
+            tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 0, 10);
             var saturated = tray.Capture();
             foreach (byte height in saturated.Heights) Require(height <= SandTray.Levels, "Concentrated pours must respect stack capacity including pending grains.");
             int saturatedMass = Total(tray);

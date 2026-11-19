@@ -27,9 +27,9 @@ namespace Mandala.Game
         RakePattern rakePattern;
         RakePatternKind rakePatternKind;
         int color, lastRendered = -1;
-        bool guides = true, down, saveFailed, loading = true, suctionRendered;
+        bool guides = true, down, saveFailed, loading = true, suctionRendered, airborneRendered;
         Vector2 current, previous;
-        float accumulator, nextProgress, nextRender, animateUntil;
+        float accumulator, nextProgress, nextRender, nextSurfaceRender, animateUntil;
         string savePath;
         Task saveTask = Task.CompletedTask;
         SandTray.Snapshot queuedSave;
@@ -41,9 +41,9 @@ namespace Mandala.Game
         void OnEnable()
         {
             Application.targetFrameRate = 60;
-            loading = true; down = false; guides = true; tool = SandTool.Pour; color = 0; suctionRendered = false;
+            loading = true; down = false; guides = true; tool = SandTool.Pour; color = 0; suctionRendered = airborneRendered = false;
             rakePattern = null;
-            undo.Clear(); lastRendered = -1; accumulator = nextProgress = nextRender = animateUntil = 0;
+            undo.Clear(); lastRendered = -1; accumulator = nextProgress = nextRender = nextSurfaceRender = animateUntil = 0;
             lastSafeArea = default; lastWidth = lastHeight = 0; confirmation = null;
             savePath = Path.Combine(Application.persistentDataPath, "mandala-v1.sand");
             Tray = new SandTray(Environment.TickCount); Progress = new MandalaProgress(Tray); surface = new SandTexture(Progress.Sections.Count);
@@ -243,15 +243,20 @@ namespace Mandala.Game
                 trayImage.image = surface.Texture;
             guideLabels.Update(gesture.View, trayImage.contentRect.width, guides);
             bool suction = Tray.SuctionGrains.Count > 0;
-            if (surface.NeedsRedraw || (now >= nextRender && (lastRendered != Tray.Changes || down || rakePattern != null || Tray.Grains.Count > 0 || suction || suctionRendered || now < animateUntil || surface.HighlightActive)))
+            bool falling = Tray.Grains.Count > 0;
+            if (surface.NeedsRedraw || (now >= nextRender && (lastRendered != Tray.Changes || down || rakePattern != null || falling || airborneRendered || suction || suctionRendered || now < animateUntil || surface.HighlightActive)))
             {
-                surface.Render(Tray, Progress, guides, now); lastRendered = Tray.Changes; nextRender = now + 1f / (suction ? 60 : 30);
+                bool updateSurface = suction || surface.NeedsRedraw || lastRendered < 0 || now >= nextSurfaceRender;
+                surface.Render(Tray, Progress, guides, now, updateSurface);
+                if (updateSurface) { lastRendered = Tray.Changes; nextSurfaceRender = now + 1f / (suction ? 60 : 30); }
+                nextRender = now + 1f / (suction || falling || (down && tool == SandTool.Pour) ? 60 : 30);
                 suctionRendered = suction; // Clear the final grain frame after the release tail ends.
+                airborneRendered = falling;
             }
             audioPlayer.Tool(tool, down || rakePattern != null || Tray.Grains.Count > 0, activity / 120f + (Tray.Grains.Count > 0 ? .3f : 0));
             PumpSave();
         }
-        float ToolRadius() => tool == SandTool.Pour ? 16 : tool == SandTool.Vacuum ? 32 : tool == SandTool.Rake ? 24 : 32 * SandTray.Size / Mathf.Max(1, trayImage.contentRect.width * gesture.Zoom);
+        float ToolRadius() => tool == SandTool.Pour ? SandTray.PourRadius : tool == SandTool.Vacuum ? 32 : tool == SandTool.Rake ? 24 : 32 * SandTray.Size / Mathf.Max(1, trayImage.contentRect.width * gesture.Zoom);
         void QueueSave() { if (!loading) { queuedSave = Tray.Capture(); } }
         void PumpSave()
         {

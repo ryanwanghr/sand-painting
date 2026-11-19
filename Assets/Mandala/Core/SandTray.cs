@@ -10,6 +10,7 @@ namespace Mandala.Game
     public sealed class SandTray
     {
         public const int Size = 440, Levels = 24, CellCount = Size * Size;
+        public const float PourRadius = 12;
         public readonly byte[] Heights = new byte[CellCount];
         public readonly byte[] Layers = new byte[CellCount * Levels];
         public readonly sbyte[] Guide = new sbyte[CellCount];
@@ -27,6 +28,7 @@ namespace Mandala.Game
         readonly List<int> candidates = new List<int>(8192);
         readonly List<SweepCell> sweepCells = new List<SweepCell>(8192);
         readonly System.Random random;
+        uint nextGrainId;
         int tick;
         float sweepCredit;
         bool rakeHeading;
@@ -41,7 +43,7 @@ namespace Mandala.Game
             -1, -2 + Size, -1 + Size, -1 + 2 * Size, Size, 1 + 2 * Size, 1 + Size, 2 + Size };
         static readonly int[] Reverse = Array.ConvertAll(Forward, direction => -direction);
 
-        public struct Grain { public int Cell, Color; public float Lift, Velocity; }
+        public struct Grain { public int Cell, Color; public float Lift, Velocity, Age; public uint Id; }
         public struct SuctionGrain
         {
             public Vector2 Start, Target, Position, Previous;
@@ -110,6 +112,7 @@ namespace Mandala.Game
             candidates.Clear();
             Vector2 movement = to - from;
             float lengthSq = movement.sqrMagnitude;
+            float pourRate = 4.5f * (16 * 16) / (radius * radius);
             int minX = Mathf.Max(2, Mathf.FloorToInt(Mathf.Min(from.x, to.x) - radius));
             int maxX = Mathf.Min(Size - 3, Mathf.FloorToInt(Mathf.Max(from.x, to.x) + radius));
             int minY = Mathf.Max(2, Mathf.FloorToInt(Mathf.Min(from.y, to.y) - radius));
@@ -144,13 +147,13 @@ namespace Mandala.Game
                 }
                 // The radial profile averages one over the disk: a fuller center with a feathered fringe.
                 float density = .2f + 1.6f * Mathf.Clamp01(1 - meanDistanceSq / (radius * radius));
-                exposure[i] += dt * contact * 3 * density; // 1.5 times the previous average flow.
+                exposure[i] += dt * contact * pourRate * density; // Fixed stream volume, independent of footprint area.
                 while (exposure[i] >= nextEmission[i])
                 {
                     nextEmission[i] = Mathf.Floor(nextEmission[i]) + 1.05f + (float)random.NextDouble() * .9f;
                     if (Heights[i] + pending[i] >= Levels) continue;
                     pending[i]++;
-                    Grains.Add(new Grain { Cell = i, Color = color, Lift = 10, Velocity = 40 }); activity++;
+                    Grains.Add(new Grain { Cell = i, Color = color, Lift = 10, Velocity = 40, Id = nextGrainId++ }); activity++;
                 }
             }
             if (tool == SandTool.Vacuum)
@@ -336,10 +339,10 @@ namespace Mandala.Game
             }
             if (activePour)
             {
-                float reach = pourRadius * 1.75f; Vector2 move = pourTo - pourFrom;
+                float reach = Mathf.Max(28, pourRadius * 1.75f); Vector2 move = pourTo - pourFrom;
                 int minX = Mathf.Max(2, (int)(Mathf.Min(pourFrom.x, pourTo.x) - reach)), maxX = Mathf.Min(Size - 3, Mathf.CeilToInt(Mathf.Max(pourFrom.x, pourTo.x) + reach));
                 int minY = Mathf.Max(2, (int)(Mathf.Min(pourFrom.y, pourTo.y) - reach)), maxY = Mathf.Min(Size - 3, Mathf.CeilToInt(Mathf.Max(pourFrom.y, pourTo.y) + reach));
-                for (int pass = 0; pass < Mathf.Min(4, Mathf.CeilToInt(pourRadius / 4)); pass++)
+                for (int pass = 0; pass < 4; pass++)
                 for (int row = minY; row <= maxY; row++) for (int col = minX; col <= maxX; col++)
                 {
                     bool backwards = reverse != (pass % 2 == 0);
@@ -353,7 +356,7 @@ namespace Mandala.Game
             activePour = false;
             for (int n = Grains.Count - 1; n >= 0; n--)
             {
-                Grain grain = Grains[n]; grain.Velocity += 80 * dt; grain.Lift -= grain.Velocity * dt;
+                Grain grain = Grains[n]; grain.Age += dt; grain.Velocity += 80 * dt; grain.Lift -= grain.Velocity * dt;
                 if (grain.Lift > 0) { Grains[n] = grain; continue; }
                 pending[grain.Cell]--;
                 if (Accepts(grain.Cell, grain.Color)) Add(grain.Cell, grain.Color);
@@ -374,15 +377,10 @@ namespace Mandala.Game
                 bool rolling = (index & 1) != 0;
                 float distance = rolling ? 2.23606798f : (index & 3) == 2 ? 1.41421356f : 1;
                 int drop = Heights[i] - Heights[neighbor];
-                if (distance > 1)
-                {
-                    // Stable rounding retains sub-layer distance differences without grid-shaped piles.
-                    uint edge = (uint)Mathf.Min(i, neighbor) * 0x9e3779b9u ^ (uint)Mathf.Max(i, neighbor);
-                    edge = (edge ^ (edge >> 16)) * 0x7feb352du;
-                    float rounding = (edge & 65535) / 65536f;
-                    if (drop <= slope * distance + rounding) continue;
-                }
-                float gradient = drop / distance;
+                if (drop < 2) continue;
+                // Stable sub-layer roughness breaks whole-height ties in every direction equally.
+                // Rounding only diagonal/rolling thresholds gives the lattice axes an advantage.
+                float gradient = (drop + RestOffset(i) - RestOffset(neighbor)) / distance;
                 if (gradient <= steepest) continue;
                 if (rolling)
                 {
@@ -396,6 +394,13 @@ namespace Mandala.Game
             }
             if (target >= 0) Add(target, Remove(i));
         }
+        static float RestOffset(int cell)
+        {
+            uint hash = (uint)cell * 0x9e3779b9u;
+            hash = (hash ^ (hash >> 16)) * 0x7feb352du;
+            hash = (hash ^ (hash >> 15)) * 0x846ca68bu;
+            return ((hash ^ (hash >> 16)) & 65535) / 65536f - .5f;
+        }
         public Snapshot Capture()
         {
             var state = new Snapshot { Heights = (byte[])Heights.Clone(), Layers = (byte[])Layers.Clone(), Protection = Protection, HasWon = HasWon };
@@ -408,7 +413,7 @@ namespace Mandala.Game
             Array.Copy(state.Heights, Heights, CellCount); Array.Copy(state.Layers, Layers, Layers.Length);
             Array.Clear(pending, 0, pending.Length); Array.Clear(exposure, 0, exposure.Length); Array.Clear(Locked, 0, Locked.Length);
             for (int i = 0; i < CellCount; i++) exposureColor[i] = -1;
-            Grains.Clear(); SuctionGrains.Clear(); EndStroke(); Protection = state.Protection; HasWon = state.HasWon; Revision++; Changes++;
+            Grains.Clear(); SuctionGrains.Clear(); nextGrainId = 0; EndStroke(); Protection = state.Protection; HasWon = state.HasWon; Revision++; Changes++;
         }
         public void Clear() => Restore(new Snapshot { Heights = new byte[CellCount], Layers = new byte[CellCount * Levels], Protection = true });
     }

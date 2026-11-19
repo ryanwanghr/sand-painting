@@ -86,8 +86,8 @@ namespace Mandala.Game
 
             public void Pourer(float phase, float contact, Color sand)
             {
-                Begin(); Move(-1.8f, 3); Line(1.8f, 3); Line(14, 56);
-                Curve(14, 62, -14, 62, -14, 56); Line(-1.8f, 3); Fill(Color.Lerp(Brass, sand, .15f));
+                Begin(); Move(-1.35f, 3); Line(1.35f, 3); Line(14, 56);
+                Curve(14, 62, -14, 62, -14, 56); Line(-1.35f, 3); Fill(Color.Lerp(Brass, sand, .15f));
                 float rub = Mathf.Sin(phase * 32) * contact;
                 Begin(); Move(-14, 33 + rub); Line(19, 39 + rub); Stroke(Wood, 2.2f);
             }

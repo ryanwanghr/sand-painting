@@ -72,31 +72,122 @@ Shader "Mandala/Surface"
                 return frac((p.x + p.y) * p.z);
             }
 
-            float sandCoverage(float2 uv, float height)
+            void sampleSurface(float2 uv, out float4 sand, out float4 feedback)
             {
-                // Grow coverage gradually from sparse residue to a continuous five-layer deposit.
+                // Reconstruct a smooth contour from cell centers. Cubic B-spline weights
+                // stay positive, so color boundaries cannot ring or reveal pale seams.
+                // Pairing weights uses four bilinear taps instead of sixteen point taps.
+                float2 grid = uv * 440 - .5;
+                float2 cell = floor(grid), t = frac(grid), u = 1 - t;
+                float2 w0 = u * u * u / 6;
+                float2 w1 = (3 * t * t * t - 6 * t * t + 4) / 6;
+                float2 w2 = (-3 * t * t * t + 3 * t * t + 3 * t + 1) / 6;
+                float2 w3 = t * t * t / 6;
+                float2 a = w0 + w1, b = w2 + w3;
+                float2 p0 = (cell - .5 + w1 / a) / 440;
+                float2 p1 = (cell + 1.5 + w3 / b) / 440;
+                sand = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, p0) * a.x * a.y
+                     + SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, float2(p1.x, p0.y)) * b.x * a.y
+                     + SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, float2(p0.x, p1.y)) * a.x * b.y
+                     + SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, p1) * b.x * b.y;
+                feedback = SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, p0) * a.x * a.y
+                         + SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, float2(p1.x, p0.y)) * b.x * a.y
+                         + SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, float2(p0.x, p1.y)) * a.x * b.y
+                         + SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, p1) * b.x * b.y;
+            }
+
+            float3 grainPigment(float2 center, float2 seed, float3 average)
+            {
+                // Draw one cell from the same positive B-spline distribution used for
+                // the smooth surface. Each grain keeps one material instead of a blend.
+                float2 grid = center * 440 - .5;
+                float2 cell = floor(grid), t = frac(grid), u = 1 - t;
+                float2 w0 = u * u * u / 6;
+                float2 w1 = (3 * t * t * t - 6 * t * t + 4) / 6;
+                float2 w2 = (-3 * t * t * t + 3 * t * t + 3 * t + 1) / 6;
+                float2 pick = float2(grainHash(seed + 137.1), grainHash(seed + 263.7));
+                float2 offset = -1 + step(w0, pick) + step(w0 + w1, pick) + step(w0 + w1 + w2, pick);
+                float2 materialUV = (cell + offset + .5) / 440;
+                float4 source = SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, materialUV, 0);
+                // Empty neighbors shape coverage separately; never introduce black grains
+                // or holes into an opaque pile at its exposed contour.
+                return source.a > 0 ? source.rgb : average;
+            }
+
+            float3 denseGrains(float2 uv, float3 pigment)
+            {
+                float2 grid = uv * 1320;
+                float footprint = max(max(fwidth(grid.x), fwidth(grid.y)), .001);
+                float detail = 1 - smoothstep(.6, 1.6, footprint);
+                if (detail <= 0) return pigment;
+
+                float2 cell = floor(grid);
+                float nearest = 8;
+                float light = 0;
+                float2 grainCenter = grid, grainSeed = cell;
+                // Irregular touching grain facets: surface texture without holes in dense sand.
+                [unroll] for (int y = -1; y <= 1; y++)
+                [unroll] for (int x = -1; x <= 1; x++)
+                {
+                    float2 seed = cell + float2(x, y);
+                    float2 center = seed + .5 + (float2(grainHash(seed + 7.3), grainHash(seed + 29.1)) - .5) * .8;
+                    float2 delta = grid - center;
+                    float distance = dot(delta, delta);
+                    if (distance < nearest)
+                    {
+                        nearest = distance;
+                        grainCenter = center;
+                        grainSeed = seed;
+                        light = (grainHash(seed + 91.7) - .5) * .08 + dot(delta, float2(-.025, .025));
+                    }
+                }
+                float3 material = grainPigment(grainCenter / 1320, grainSeed, pigment);
+                // Unresolved grains converge to the filtered surface, limiting shimmer.
+                return lerp(pigment, material, detail) * (1 + light * detail);
+            }
+
+            float4 sandGrains(float2 uv, float height, float3 pigment)
+            {
                 float density = height + max(0, height - 1) * .5;
-                // Grain positions stay anchored to the tray through panning, zooming, and redraws.
                 float2 grainGrid = uv * 880;
                 float2 grainCell = floor(grainGrid);
-                float2 jitter = float2(grainHash(grainCell), grainHash(grainCell + 19.7)) - .5;
-                float random = grainHash(grainCell + 73.9);
-                float2 shape = lerp(float2(.83, 1.06), float2(1.06, .83), random);
-                float distance = length((frac(grainGrid) - .5 - jitter * .32) / shape);
-                float radius = (.26 + min(density, 7) * .07) * lerp(.88, 1.08, grainHash(grainCell + 5.3));
                 float width = max(max(fwidth(grainGrid.x), fwidth(grainGrid.y)) * .5, .001);
-                float grains = 1 - smoothstep(radius - width, radius + width, distance);
-                grains *= smoothstep(random - .1, random + .1, saturate(.55 + density * .2));
-                grains = lerp(grains, 1, smoothstep(4, 7, density));
-
-                // Unresolved grains converge to coverage instead of sparkling or aliasing at fit-to-tray scale.
+                float detail = saturate(.5 / width - .6);
                 float h = min(density, 7);
                 float coverage = saturate(.05 + .27 * h - .018 * h * h);
-                coverage *= saturate(.55 + density * .2);
-                float variation = lerp(.75, 1.25, grainHash(floor(uv * 440)));
-                coverage *= lerp(variation, 1, smoothstep(1, 4, density));
-                float detail = saturate(.5 / width - .6);
-                return saturate(lerp(coverage, grains, detail)) * step(.5, height);
+                coverage *= saturate(.55 + density * .2) * saturate(height);
+                float solid = smoothstep(4, 7, density);
+                if (solid > 0) pigment = lerp(pigment, denseGrains(uv, pigment), solid);
+                if (detail <= 0 || solid >= 1) return float4(pigment, lerp(coverage, 1, solid));
+
+                float grains = 0;
+                float3 grainColor = pigment;
+                // Search neighboring cells: freely displaced grains may cross their seed-cell border.
+                // Each whole grain reads its material at its own center, avoiding square cell cutouts.
+                [unroll] for (int y = -1; y <= 1; y++)
+                [unroll] for (int x = -1; x <= 1; x++)
+                {
+                    float2 seed = grainCell + float2(x, y);
+                    float2 center = seed + .5 + (float2(grainHash(seed), grainHash(seed + 19.7)) - .5) * .96;
+                    float2 materialUV = (floor(center * .5) + .5) / 440;
+                    float4 source = SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, materialUV, 0);
+                    float sourceHeight = source.a * 24;
+                    float sourceDensity = sourceHeight + max(0, sourceHeight - 1) * .5;
+                    float random = grainHash(seed + 73.9);
+                    float angle = grainHash(seed + 31.3) * 6.2831853;
+                    float sine, cosine;
+                    sincos(angle, sine, cosine);
+                    float2 delta = grainGrid - center;
+                    delta = float2(delta.x * cosine - delta.y * sine, delta.x * sine + delta.y * cosine);
+                    float2 shape = float2(lerp(.72, 1.06, random), lerp(1.08, .80, random));
+                    float distance = length(delta / shape);
+                    float radius = (.26 + min(sourceDensity, 7) * .07) * lerp(.76, 1.14, grainHash(seed + 5.3));
+                    float mask = 1 - smoothstep(radius - width, radius + width, distance);
+                    mask *= smoothstep(random - .1, random + .1, saturate(.55 + sourceDensity * .2)) * step(.5, sourceHeight);
+                    if (mask > grains) { grains = mask; grainColor = source.rgb; }
+                }
+                return float4(lerp(pigment, grainColor, detail * (1 - solid)),
+                    lerp(lerp(coverage, grains, detail), 1, solid));
             }
 
             void guide(inout float3 color, float distance, float fade, float empty, float colorIndex)
@@ -113,18 +204,33 @@ Shader "Mandala/Surface"
             half4 frag(Varyings input) : SV_Target
             {
                 float2 uv = _View.xy + input.uv * _View.zw;
-                // Material state stays on the simulation grid; thin coverage resolves into grains when zoomed.
                 float2 sandUV = (floor(uv * 440) + .5) / 440;
                 float2 p = (uv - .5) / .43;
                 float r = length(p), angle = atan2(p.y, p.x);
                 float petal = cos(angle * 8);
-                float4 sand = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, sandUV);
-                float4 feedback = SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, sandUV);
+                float4 sand, feedback;
+                sampleSurface(uv, sand, feedback);
                 float occupied = feedback.b;
-                float height = sand.a * 24;
-                float paperNoise = (grainHash(floor(uv * 440) + 47.1) - .5) * .009;
-                float3 paper = ink(saturate(_TrayColor.rgb + paperNoise)) * (1 - feedback.a * .28);
-                float3 color = lerp(paper, sand.rgb, sandCoverage(uv, height));
+                // Height describes occupied sand only. Empty neighbors reduce contour
+                // coverage, never the deposit's density or its choice of grain rendering.
+                float height = sand.a * 24 / max(occupied, .001);
+                // Keep the reconstructed outline crisp at display resolution. A small,
+                // continuous grain-scale offset breaks up the contour without cell-shaped cuts.
+                float2 edgeGrid = uv * 1320, edgeCell = floor(edgeGrid), edgeT = frac(edgeGrid);
+                edgeT = edgeT * edgeT * (3 - 2 * edgeT);
+                float edgeNoise = lerp(lerp(grainHash(edgeCell + 11.7), grainHash(edgeCell + float2(1, 0) + 11.7), edgeT.x),
+                    lerp(grainHash(edgeCell + float2(0, 1) + 11.7), grainHash(edgeCell + 1 + 11.7), edgeT.x), edgeT.y) - .5;
+                float edgeDetail = 1 - smoothstep(.6, 1.6, max(fwidth(edgeGrid.x), fwidth(edgeGrid.y)));
+                float contour = occupied + edgeNoise * .06 * edgeDetail;
+                float edgeAA = max(fwidth(contour) * .65, .025);
+                float edgeCoverage = smoothstep(.5 - edgeAA, .5 + edgeAA, contour);
+                float paperNoise = (grainHash(floor(uv * 1777) + 47.1) - .5) * .009;
+                // Cleared tray stays clean; height-based shading is already in the sand pigment.
+                float3 paper = ink(saturate(_TrayColor.rgb + paperNoise));
+                float3 pigment = sand.rgb / max(occupied, .001);
+                float4 granular = sandGrains(uv, height, pigment);
+                granular.a *= edgeCoverage;
+                float3 color = lerp(paper, granular.rgb, granular.a);
 
                 float inner = max(.20 - r, r - (.49 + .13 * petal));
                 float gold = min(r - .12, max(inner, (petal - .25) * .04));
