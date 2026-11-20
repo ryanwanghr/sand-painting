@@ -13,7 +13,7 @@ namespace Mandala.Game
         readonly bool[] fits;
         const float NormalBoxSize = 16, NormalFontSize = 10, MinimumFontSize = 8, Padding = 1;
         Rect lastView;
-        float lastSize = -1;
+        Vector2 lastSize;
 
         public MandalaGuideLabels(Image image, SandTray tray, MandalaProgress progress)
         {
@@ -76,16 +76,17 @@ namespace Mandala.Game
         static Vector2 UV(int cell) => new Vector2((cell % SandTray.Size + .5f) / SandTray.Size,
             1 - (cell / SandTray.Size + .5f) / SandTray.Size);
 
-        float BoxSize(int cell, Rect view, float size)
+        float BoxSize(int cell, Rect view, Vector2 size)
         {
             Vector2 uv = UV(cell);
-            float edge = Mathf.Min(Mathf.Min((uv.x - view.xMin) / view.width, (view.xMax - uv.x) / view.width),
-                Mathf.Min((uv.y - view.yMin) / view.height, (view.yMax - uv.y) / view.height)) * size;
-            float available = (2 * clearance[cell] - 1) * size / (SandTray.Size * Mathf.Max(view.width, view.height));
+            float scaleX = size.x / view.width, scaleY = size.y / view.height;
+            float edge = Mathf.Min(Mathf.Min(uv.x - view.xMin, view.xMax - uv.x) * scaleX,
+                Mathf.Min(uv.y - view.yMin, view.yMax - uv.y) * scaleY);
+            float available = (2 * clearance[cell] - 1) * Mathf.Min(scaleX, scaleY) / SandTray.Size;
             return Mathf.Clamp(Mathf.Min(available, edge * 2) - Padding * 2, 0, NormalBoxSize);
         }
 
-        int VisibleCell(int section, Rect view, float size)
+        int VisibleCell(int section, Rect view, Vector2 size)
         {
             int best = labelCells[section];
             float bestBox = BoxSize(best, view, size);
@@ -103,7 +104,9 @@ namespace Mandala.Game
             return best;
         }
 
-        public void Update(Rect view, float size, bool guides)
+        public void Update(Rect view, float size, bool guides) => Update(view, Vector2.one * size, guides);
+
+        public void Update(Rect view, Vector2 size, bool guides)
         {
             layer.EnableInClassList("hidden", !guides);
             bool reposition = view != lastView || size != lastSize;
@@ -116,9 +119,9 @@ namespace Mandala.Game
                     Vector2 uv = UV(cell);
                     float box = BoxSize(cell, view, size);
                     float fontSize = NormalFontSize * box / NormalBoxSize;
-                    float left = (uv.x - view.x) / view.width * size - box * .5f;
-                    float top = (1 - (uv.y - view.y) / view.height) * size - box * .5f;
-                    fits[i] = fontSize >= MinimumFontSize && left >= 0 && top >= 0 && left + box <= size && top + box <= size;
+                    float left = (uv.x - view.x) / view.width * size.x - box * .5f;
+                    float top = (1 - (uv.y - view.y) / view.height) * size.y - box * .5f;
+                    fits[i] = fontSize >= MinimumFontSize && left >= 0 && top >= 0 && left + box <= size.x && top + box <= size.y;
                     labels[i].style.width = box;
                     labels[i].style.height = box;
                     labels[i].style.fontSize = fontSize;

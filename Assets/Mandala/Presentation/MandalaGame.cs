@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -10,19 +9,20 @@ namespace Mandala.Game
     [RequireComponent(typeof(UIDocument), typeof(MandalaAudio))]
     public sealed class MandalaGame : MonoBehaviour
     {
-        [SerializeField, Range(40, 100), Tooltip("Touch clearance in UI panel points; also reserves the gutter below the tray.")]
+        [SerializeField, Range(40, 100), Tooltip("Distance in UI panel points between a touch and the tool tip.")]
         float touchTipOffset = 64;
         public SandTray Tray { get; private set; }
         public MandalaProgress Progress { get; private set; }
-        readonly List<SandTray.Snapshot> undo = new List<SandTray.Snapshot>(8);
+        readonly Button[] swatches = new Button[SandTray.ColorCount];
+        readonly VisualElement[] colorFills = new VisualElement[SandTray.ColorCount];
         SandTexture surface;
+        CalmWaterBackground water;
         MandalaGuideLabels guideLabels;
         TrayGesture gesture;
         TrayToolTip toolTip;
         MandalaAudio audioPlayer;
-        VisualElement root, dialog;
-        Label message, progressLabel;
-        Button undoButton;
+        VisualElement root, hud, dialog, settings, menuDismiss, palette, progressPanel, pourFill, cleanup, cleanupFill;
+        Button menu, release;
         SandTool tool;
         RakePattern rakePattern;
         RakePatternKind rakePatternKind;
@@ -43,7 +43,7 @@ namespace Mandala.Game
             Application.targetFrameRate = 60;
             loading = true; down = false; guides = true; tool = SandTool.Pour; color = 0; suctionRendered = airborneRendered = false;
             rakePattern = null;
-            undo.Clear(); lastRendered = -1; accumulator = nextProgress = nextRender = nextSurfaceRender = animateUntil = 0;
+            lastRendered = -1; accumulator = nextProgress = nextRender = nextSurfaceRender = animateUntil = 0;
             lastSafeArea = default; lastWidth = lastHeight = 0; confirmation = null;
             savePath = Path.Combine(Application.persistentDataPath, "mandala-v1.sand");
             Tray = new SandTray(Environment.TickCount); Progress = new MandalaProgress(Tray); surface = new SandTexture(Progress.Sections.Count);
@@ -52,39 +52,71 @@ namespace Mandala.Game
             root = GetComponent<UIDocument>().rootVisualElement;
             root.Clear();
             GetComponent<UIDocument>().visualTreeAsset.CloneTree(root);
+            water = new CalmWaterBackground(root.Q<Image>("water"));
             trayImage = root.Q<Image>("tray");
             trayImage.image = surface.Texture;
             trayImage.scaleMode = ScaleMode.StretchToFill;
             var traySpace = root.Q("traySpace");
-            traySpace.style.paddingBottom = touchTipOffset;
             gesture = new TrayGesture(trayImage, touchTipOffset) { Begin = BeginStroke, Move = p => current = p, End = EndStroke };
             traySpace.AddManipulator(gesture);
             guideLabels = new MandalaGuideLabels(trayImage, Tray, Progress);
             toolTip = new TrayToolTip();
-            var safeArea = root.Q("safeArea");
-            safeArea.Insert(safeArea.IndexOf(root.Q("dialog")), toolTip);
+            hud = root.Q("safeArea");
+            hud.parent.Insert(hud.parent.IndexOf(hud), toolTip);
             traySpace.RegisterCallback<GeometryChangedEvent>(ResizeTray);
-            message = root.Q<Label>("message"); progressLabel = root.Q<Label>("progress"); dialog = root.Q("dialog");
-            undoButton = root.Q<Button>("undo");
+            dialog = root.Q("dialog");
+            menu = root.Q<Button>("menu");
+            settings = root.Q("settings");
+            menuDismiss = root.Q("menuDismiss");
+            palette = root.Q("palette");
+            progressPanel = root.Q("progress");
+            pourFill = root.Q("pourFill");
+            cleanup = root.Q("cleanup");
+            cleanupFill = root.Q("cleanupFill");
+            release = root.Q<Button>("release");
             AddToolPicture("pour", "Pour", SandTool.Pour);
             AddToolPicture("vacuum", "Vacuum", SandTool.Vacuum);
             AddToolPicture("sweep", "Sweep", SandTool.Sweep);
             AddToolPicture("rake", "Rake", SandTool.Rake);
-            for (int i = 0; i < 5; i++) { int choice = i; root.Q<Button>("color" + i).clicked += () => { gesture.CancelAll(); StopRakePattern(); color = choice; surface.Highlight(color, Time.unscaledTime); Select(); }; }
+            for (int i = 0; i < swatches.Length; i++)
+            {
+                int choice = i;
+                var swatch = swatches[i] = root.Q<Button>("color" + i);
+                var chip = new Label((i + 1).ToString()) { pickingMode = PickingMode.Ignore };
+                chip.AddToClassList("swatch-chip");
+                var meter = new VisualElement { pickingMode = PickingMode.Ignore };
+                meter.AddToClassList("meter");
+                meter.AddToClassList("swatch-meter");
+                var fill = colorFills[i] = new VisualElement { pickingMode = PickingMode.Ignore };
+                fill.AddToClassList("meter-fill");
+                meter.Add(fill);
+                swatch.Add(chip);
+                swatch.Add(meter);
+                swatch.clicked += () =>
+                {
+                    color = choice;
+                    Choose(SandTool.Pour);
+                    surface.Highlight(color, Time.unscaledTime);
+                };
+            }
             Bind("pour", () => Choose(SandTool.Pour)); Bind("vacuum", () => Choose(SandTool.Vacuum)); Bind("sweep", () => Choose(SandTool.Sweep)); Bind("rake", () => Choose(SandTool.Rake));
             Bind("rakeSpiral", () => StartRakePattern(RakePatternKind.Spiral));
             Bind("rakePetals", () => StartRakePattern(RakePatternKind.Petals));
             Bind("rakeWaves", () => StartRakePattern(RakePatternKind.Waves));
             Bind("rakeStop", () => StopRakePattern());
-            Bind("undo", Undo);
+            menu.clicked += () => SetMenu(settings.ClassListContains("hidden"));
+            menuDismiss.RegisterCallback<PointerDownEvent>(e => SetMenu(false));
             Bind("guides", () => { guides = !guides; lastRendered = -1; Select(); });
             Bind("sound", () => { audioPlayer.SetEnabled(!audioPlayer.Enabled); Select(); });
-            Bind("resetView", () => { StopRakePattern(); gesture.ResetView(); });
-            Bind("clear", () => ShowDialog("A fresh tray?", "Remove all sand. You can undo this.", "Clear tray", "Keep painting", () => { Remember(); Tray.Clear(); audioPlayer.ResetPattern(); Changed(); }));
-            Bind("release", () => ShowDialog("Let it go", "Release the protected sections. Sweep, rake, vacuum, or pour freely.", "Release sand", "Keep painting", ReleaseSand));
+            Bind("clear", () => ShowDialog("A fresh tray?", "Remove all sand and start over?", "Clear tray", "Keep painting", ClearTray));
+            release.clicked += () =>
+            {
+                if (CanLetGo)
+                    ShowDialog("Let go", "Sweep or vacuum across an edge to release the sand there.", "Release sand", "Keep painting", ReleaseSand);
+            };
             Bind("confirm", () => { dialog.AddToClassList("hidden"); var action = confirmation; confirmation = null; action?.Invoke(); });
             Bind("cancel", () => { dialog.AddToClassList("hidden"); confirmation = null; });
-            Select(); Load();
+            Select(); RefreshProgress(); Load();
         }
         void Bind(string name, Action action) => root.Q<Button>(name).clicked += action;
         void AddToolPicture(string name, string title, SandTool value)
@@ -108,39 +140,46 @@ namespace Mandala.Game
                     catch (Exception) { if (File.Exists(savePath + ".bak")) return MandalaSave.Read(savePath + ".bak"); throw; }
                 });
                 if (this == null || !isActiveAndEnabled || generation != loadGeneration) return;
-                if (state != null) { Tray.Restore(state); message.text = "Welcome back. Your sand is just as you left it."; }
+                if (state != null) { Tray.Restore(state); guides = Tray.Protection; }
             }
-            catch (Exception error) { if (this != null && generation == loadGeneration) { message.text = "Saved sand could not be loaded. A fresh tray is ready."; Debug.LogWarning("Mandala load: " + error.Message); } }
-            finally { if (this != null && isActiveAndEnabled && generation == loadGeneration) { loading = false; Progress.Update(Tray, Time.unscaledTime, false); } }
+            catch (Exception error) { if (this != null && generation == loadGeneration) Debug.LogWarning("Mandala load: " + error.Message); }
+            finally { if (this != null && isActiveAndEnabled && generation == loadGeneration) { loading = false; Progress.Update(Tray, Time.unscaledTime, false); lastRendered = -1; Select(); RefreshProgress(); } }
         }
         void ResizeTray(GeometryChangedEvent e)
         {
-            gesture.CancelAll();
-            Rect space = root.Q("traySpace").contentRect;
-            float size = Mathf.Max(1, Mathf.Min(space.width, space.height));
-            // Geometry and safe-area insets are runtime measurements, not visual theme overrides.
-            var image = root.Q<Image>("tray"); image.style.width = size; image.style.height = size;
+            Rect space = e.newRect;
+            float gutter = space.height >= space.width || Application.isMobilePlatform ? 2 * touchTipOffset : 0;
+            gesture.Resize(space.size, gutter);
         }
         void SafeArea()
         {
             Rect safe = Screen.safeArea;
             if (safe == lastSafeArea && lastWidth == Screen.width && lastHeight == Screen.height) return;
             lastSafeArea = safe; lastWidth = Screen.width; lastHeight = Screen.height;
-            var area = root.Q("safeArea"); float scale = root.resolvedStyle.width / Mathf.Max(1, Screen.width);
+            float scale = root.resolvedStyle.width / Mathf.Max(1, Screen.width);
             if (!float.IsFinite(scale)) scale = 1;
-            area.style.paddingLeft = 16 + safe.xMin * scale;
-            area.style.paddingRight = 16 + (Screen.width - safe.xMax) * scale;
-            area.style.paddingTop = 12 + (Screen.height - safe.yMax) * scale;
-            area.style.paddingBottom = 12 + safe.yMin * scale;
+            hud.style.left = 10 + safe.xMin * scale;
+            hud.style.right = 10 + (Screen.width - safe.xMax) * scale;
+            hud.style.top = 10 + (Screen.height - safe.yMax) * scale;
+            hud.style.bottom = 10 + safe.yMin * scale;
+            hud.EnableInClassList("wide", safe.width >= safe.height * 1.45f);
+            hud.EnableInClassList("compact", safe.height * scale < 220);
         }
         void Choose(SandTool value)
         {
             gesture.CancelAll(); StopRakePattern(); tool = value; Select();
-            if (value == SandTool.Rake) message.text = "Drag to comb the sand, or choose a pattern. Pour sand first; Let go frees protected sections.";
+        }
+        void SetMenu(bool open)
+        {
+            if (open) gesture.CancelAll();
+            settings.EnableInClassList("hidden", !open);
+            menuDismiss.EnableInClassList("hidden", !open);
+            menu.text = open ? "Close" : "Menu";
         }
         void Select()
         {
-            for (int i = 0; i < 5; i++) root.Q<Button>("color" + i).EnableInClassList("selected", color == i);
+            for (int i = 0; i < swatches.Length; i++)
+                swatches[i].EnableInClassList("selected", tool == SandTool.Pour && color == i);
             root.Q<Button>("pour").EnableInClassList("selected", tool == SandTool.Pour);
             root.Q<Button>("vacuum").EnableInClassList("selected", tool == SandTool.Vacuum);
             root.Q<Button>("sweep").EnableInClassList("selected", tool == SandTool.Sweep);
@@ -152,46 +191,85 @@ namespace Mandala.Game
             root.Q<Button>("rakeStop").SetEnabled(rakePattern != null);
             root.Q<Button>("guides").text = guides ? "Guides on" : "Guides off";
             root.Q<Button>("sound").text = audioPlayer.Enabled ? "Sound on" : "Sound off";
-            undoButton.SetEnabled(undo.Count > 0);
+        }
+        bool CanLetGo => !loading && Tray.Protection && Tray.HasWon && Progress.PaintingComplete && Progress.Clean
+            && !down && rakePattern == null && Tray.Grains.Count == 0 && Tray.RollingGrains.Count == 0;
+
+        void RefreshProgress()
+        {
+            progressPanel.EnableInClassList("hidden", loading || !Tray.Protection);
+            pourFill.style.width = Length.Percent(100 * Progress.PouringProgress);
+            cleanup.EnableInClassList("hidden", !Progress.AllComplete);
+            cleanupFill.style.width = Length.Percent(100 * Progress.CleanupProgress);
+            release.EnableInClassList("hidden", !CanLetGo);
+            palette.EnableInClassList("free-paint", !Tray.Protection);
+            for (int i = 0; i < swatches.Length; i++)
+            {
+                float value = Tray.Protection ? Progress.ColorProgress(i) : 0;
+                colorFills[i].style.width = Length.Percent(100 * value);
+                bool done = value >= 1;
+                swatches[i].EnableInClassList("complete", done);
+                swatches[i].EnableInClassList("unfinished", Tray.Protection && !done);
+            }
+            int slot = 0;
+            foreach (var swatch in swatches)
+            {
+                if (swatch.ClassListContains("complete")) continue;
+                if (palette[slot] != swatch) swatch.PlaceBehind(palette[slot]);
+                slot++;
+            }
+            foreach (var swatch in swatches)
+            {
+                if (!swatch.ClassListContains("complete")) continue;
+                if (palette[slot] != swatch) swatch.PlaceBehind(palette[slot]);
+                slot++;
+            }
         }
         public void BeginStroke(Vector2 point)
         {
             if (loading || !dialog.ClassListContains("hidden")) return;
             StopRakePattern();
-            Remember(); previous = current = point; down = true;
+            previous = current = point; down = true;
         }
         public void MoveStroke(Vector2 point) => current = point;
         public void EndStroke() { if (!down) return; down = false; Tray.EndStroke(); QueueSave(); }
-        void Remember() { if (undo.Count == 8) undo.RemoveAt(0); undo.Add(Tray.Capture()); Select(); }
-        public void Undo()
+        void Changed() { Progress.Update(Tray, Time.unscaledTime, false); lastRendered = -1; QueueSave(); Select(); RefreshProgress(); }
+        void ClearTray()
         {
-            gesture.CancelAll(); StopRakePattern(); if (loading || undo.Count == 0) return;
-            Tray.Restore(undo[undo.Count - 1]); undo.RemoveAt(undo.Count - 1); Changed();
+            if (!Tray.Protection) guides = true;
+            Tray.Clear();
+            audioPlayer.ResetPattern();
+            Changed();
         }
-        void Changed() { Progress.Update(Tray, Time.unscaledTime, false); lastRendered = -1; QueueSave(); Select(); }
-        void ReleaseSand() { Remember(); Tray.Protection = false; guides = false; tool = SandTool.Sweep; message.text = "The tray is open. Undo restores its protection."; Changed(); }
+        void ReleaseSand()
+        {
+            Progress.Update(Tray, Time.unscaledTime, false);
+            if (!CanLetGo) return;
+            Tray.ReleaseColors();
+            guides = false;
+            tool = SandTool.Sweep;
+            Changed();
+        }
         void ShowDialog(string title, string body, string accept, string cancel, Action action)
         {
-            if (loading) return; gesture.CancelAll(); StopRakePattern(); confirmation = action;
+            if (loading) return; gesture.CancelAll(); StopRakePattern(); SetMenu(false); confirmation = action;
             root.Q<Label>("dialogTitle").text = title; root.Q<Label>("dialogText").text = body;
             root.Q<Button>("confirm").text = accept; root.Q<Button>("cancel").text = cancel; dialog.RemoveFromClassList("hidden");
         }
         public void StartRakePattern(RakePatternKind kind)
         {
             if (loading || !dialog.ClassListContains("hidden")) return;
-            if (Tray.Mass() == 0) { message.text = "Pour a layer of sand first, then choose a rake pattern."; return; }
+            if (Tray.Mass() == 0) return;
             gesture.ResetView(); StopRakePattern();
-            tool = SandTool.Rake; Remember(); Tray.EndStroke();
+            tool = SandTool.Rake; Tray.EndStroke();
             rakePatternKind = kind; rakePattern = new RakePattern(kind);
             previous = current = rakePattern.Position;
-            message.text = "The rake is drawing. Touch the sand to take over, or tap Stop. Undo restores the whole pattern.";
             Select();
         }
         public void StopRakePattern()
         {
             if (rakePattern == null) return;
             rakePattern = null; Tray.EndStroke(); QueueSave(); Select();
-            message.text = "Drag to rake freely, or choose another pattern. Undo restores the last pass.";
         }
         Vector2 RakeTipPosition()
         {
@@ -201,14 +279,16 @@ namespace Mandala.Game
         }
         void Update()
         {
+            float now = Time.unscaledTime;
+            water?.Render(now, gesture.View);
             SafeArea(); if (loading) return;
-            float now = Time.unscaledTime; int activity = 0;
+            int activity = 0;
             accumulator += Mathf.Min(Time.unscaledDeltaTime, .05f);
             while (accumulator >= 1f / 60)
             {
                 if (rakePattern != null)
                 {
-                    current = rakePattern.Advance(90f / 60);
+                    current = rakePattern.Advance(90f * SandTray.GridScale / 60);
                     activity += Tray.Apply(SandTool.Rake, previous, current, ToolRadius(), color, 1f / 60); previous = current;
                     if (rakePattern.Complete) StopRakePattern();
                 }
@@ -216,54 +296,61 @@ namespace Mandala.Game
                 {
                     activity += Tray.Apply(tool, previous, current, ToolRadius(), color, 1f / 60); previous = current;
                 }
-                bool airborne = Tray.Grains.Count > 0;
+                bool airborne = Tray.Grains.Count > 0 || Tray.RollingGrains.Count > 0;
                 Tray.Step(1f / 60);
-                if (airborne && Tray.Grains.Count == 0 && !down) QueueSave();
+                if (airborne && Tray.Grains.Count == 0 && Tray.RollingGrains.Count == 0 && !down) QueueSave();
                 accumulator -= 1f / 60;
             }
             toolTip.UpdateTip(trayImage.ChangeCoordinatesTo(toolTip, rakePattern != null ? RakeTipPosition() : gesture.TipPosition),
-                ToolRadius() * trayImage.contentRect.width * gesture.Zoom / SandTray.Size,
-                touchTipOffset, tool, SandTexture.Palette[color], (rakePattern != null || gesture.ToolVisible) && dialog.ClassListContains("hidden"),
+                ToolRadius() * PixelsPerCell(),
+                touchTipOffset, tool, SandTexture.Palette[color], (rakePattern != null || gesture.ToolVisible) && dialog.ClassListContains("hidden") && settings.ClassListContains("hidden"),
                 down || rakePattern != null, Tray.RakeAngle);
             if (now >= nextProgress)
             {
                 int finished = Progress.Update(Tray, now); nextProgress = now + .1f;
-                if (finished > 0 && Tray.Protection) { audioPlayer.Celebrate(finished); animateUntil = now + .75f; message.text = "A section settled. Its matching sand is protected."; }
-                progressLabel.text = $"{Progress.Coverage:P0} colored  ·  {Progress.CompletedCount}/{Progress.Sections.Count} sections";
-                if (Progress.AllComplete && !Progress.Clean && Tray.Protection) message.text = "Vacuum stray sand from the gaps to finish.";
+                if (finished > 0 && Tray.Protection) { QueueSave(); audioPlayer.Celebrate(finished); animateUntil = now + .75f; }
                 if (Progress.CheckWin(Tray, now, down || rakePattern != null))
                 {
                     audioPlayer.CompletePainting(); QueueSave();
-                    ShowDialog("A moment, made by you.", "Your mandala is complete. Keep it a little longer, or let the sand go.", "Let go", "Keep painting", ReleaseSand);
                 }
+                RefreshProgress();
             }
             float panelWidth = root.resolvedStyle.width;
             float pixelsPerPoint = panelWidth > 0 ? Screen.width / panelWidth : 1;
-            if (surface.SetViewport(trayImage.contentRect.width * pixelsPerPoint, gesture.View))
+            Vector2 viewport = trayImage.contentRect.size;
+            if (surface.SetViewport(viewport.x * pixelsPerPoint, gesture.View, viewport.y * pixelsPerPoint))
                 trayImage.image = surface.Texture;
-            guideLabels.Update(gesture.View, trayImage.contentRect.width, guides);
+            guideLabels.Update(gesture.View, viewport, guides);
             bool suction = Tray.SuctionGrains.Count > 0;
-            bool falling = Tray.Grains.Count > 0;
-            if (surface.NeedsRedraw || (now >= nextRender && (lastRendered != Tray.Changes || down || rakePattern != null || falling || airborneRendered || suction || suctionRendered || now < animateUntil || surface.HighlightActive)))
+            bool rolling = Tray.RollingGrains.Count > 0;
+            bool falling = Tray.Grains.Count > 0 || rolling;
+            // Show the latest simulation state every frame it changes; animation
+            // deadlines must not skip landed grains or intermediate settling states.
+            bool surfaceChanged = lastRendered != Tray.Changes;
+            if (surface.NeedsRedraw || surfaceChanged || rolling || (now >= nextRender && (down || rakePattern != null || falling || airborneRendered || suction || suctionRendered || now < animateUntil || surface.HighlightActive)))
             {
-                bool updateSurface = suction || surface.NeedsRedraw || lastRendered < 0 || now >= nextSurfaceRender;
+                bool updateSurface = surfaceChanged || suction || surface.NeedsRedraw || lastRendered < 0 || now >= nextSurfaceRender;
                 surface.Render(Tray, Progress, guides, now, updateSurface);
                 if (updateSurface) { lastRendered = Tray.Changes; nextSurfaceRender = now + 1f / (suction ? 60 : 30); }
                 nextRender = now + 1f / (suction || falling || (down && tool == SandTool.Pour) ? 60 : 30);
                 suctionRendered = suction; // Clear the final grain frame after the release tail ends.
                 airborneRendered = falling;
             }
-            audioPlayer.Tool(tool, down || rakePattern != null || Tray.Grains.Count > 0, activity / 120f + (Tray.Grains.Count > 0 ? .3f : 0));
+            audioPlayer.Tool(tool, down || rakePattern != null || Tray.Grains.Count > 0, activity / (120f * SandTray.AreaScale) + (Tray.Grains.Count > 0 ? .3f : 0));
             PumpSave();
         }
-        float ToolRadius() => tool == SandTool.Pour ? SandTray.PourRadius : tool == SandTool.Vacuum ? 32 : tool == SandTool.Rake ? 24 : 32 * SandTray.Size / Mathf.Max(1, trayImage.contentRect.width * gesture.Zoom);
+        float ToolRadius() => tool == SandTool.Pour ? SandTray.PourRadius
+            : tool == SandTool.Vacuum ? 32 * SandTray.GridScale
+            : tool == SandTool.Rake ? 24 * SandTray.GridScale
+            : 32 / Mathf.Max(1f / SandTray.Size, PixelsPerCell());
+        float PixelsPerCell() => trayImage.contentRect.width / (SandTray.Size * gesture.View.width);
         void QueueSave() { if (!loading) { queuedSave = Tray.Capture(); } }
         void PumpSave()
         {
             if (!saveTask.IsCompleted) return;
             if (saveTask.IsFaulted && !saveFailed)
             {
-                saveFailed = true; message.text = "Could not save sand on this device."; Debug.LogWarning("Mandala save: " + saveTask.Exception?.GetBaseException().Message);
+                saveFailed = true; Debug.LogWarning("Mandala save: " + saveTask.Exception?.GetBaseException().Message);
             }
             if (queuedSave == null) return;
             var snapshot = queuedSave; queuedSave = null; saveFailed = false;
@@ -284,6 +371,7 @@ namespace Mandala.Game
         {
             FlushSave(); loadGeneration++; if (root != null) root.Q("traySpace")?.UnregisterCallback<GeometryChangedEvent>(ResizeTray);
             if (gesture != null) root?.Q("traySpace")?.RemoveManipulator(gesture);
+            water?.Dispose();
             surface?.Dispose();
         }
     }

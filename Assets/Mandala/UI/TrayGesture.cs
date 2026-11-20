@@ -8,6 +8,7 @@ namespace Mandala.Game
     /// <summary>Owns captured pointers; a second finger suspends painting until all fingers lift.</summary>
     public sealed class TrayGesture : PointerManipulator
     {
+        const float MaxZoom = 8;
         readonly Dictionary<int, Vector2> pointers = new Dictionary<int, Vector2>();
         readonly VisualElement surface;
         readonly float touchTipOffset;
@@ -19,6 +20,7 @@ namespace Mandala.Game
         public bool TouchTipVisible => painting && strokeOffset > 0;
         public bool ToolVisible => painting || hovering;
         Vector2 center = new Vector2(.5f, .5f);
+        Vector2 fittedExtents = Vector2.one;
         float strokeOffset;
         bool gesture, painting, hovering;
         public TrayGesture(VisualElement surface = null, float touchTipOffset = 64)
@@ -42,12 +44,18 @@ namespace Mandala.Game
             target.UnregisterCallback<PointerEnterEvent>(Enter); target.UnregisterCallback<PointerLeaveEvent>(Leave);
         }
         Vector2 Local(Vector3 position) => Surface.WorldToLocal(position);
-        Vector2 Normalized(Vector2 local) => new Vector2(local.x / Mathf.Max(1, Surface.contentRect.width), local.y / Mathf.Max(1, Surface.contentRect.height));
-        Vector2 Cell(Vector2 local) => (center + (Normalized(local) - Vector2.one * .5f) / Zoom) * SandTray.Size;
+        Vector2 Offset(Vector2 local) => Vector2.Scale(fittedExtents, new Vector2(
+            local.x / Mathf.Max(1, Surface.contentRect.width) - .5f, local.y / Mathf.Max(1, Surface.contentRect.height) - .5f));
+        Vector2 Cell(Vector2 local) => (center + Offset(local) / Zoom) * SandTray.Size;
+        bool OverTray(Vector2 local)
+        {
+            Vector2 cell = Cell(local);
+            return Surface.contentRect.Contains(local) && cell.x >= 0 && cell.y >= 0 && cell.x < SandTray.Size && cell.y < SandTray.Size;
+        }
         void Hover(Vector2 point)
         {
             TipPosition = point;
-            hovering = Surface.contentRect.Contains(point);
+            hovering = OverTray(point);
         }
         void Enter(PointerEnterEvent e)
         {
@@ -56,8 +64,10 @@ namespace Mandala.Game
         void Leave(PointerLeaveEvent e) { if (e.pointerType != UnityEngine.UIElements.PointerType.touch) hovering = false; }
         void Paint(Vector2 finger)
         {
-            TipPosition = finger - Vector2.up * strokeOffset;
-            if (!Surface.contentRect.Contains(TipPosition)) { Finish(); return; }
+            // Taper the offset near the screen edge so the bottom of the tray stays reachable.
+            float clearance = Mathf.Min(strokeOffset, Mathf.Max(0, 2 * (Surface.contentRect.yMax - finger.y)));
+            TipPosition = finger - Vector2.up * clearance;
+            if (!OverTray(TipPosition)) { Finish(); return; }
             if (!painting) { painting = true; Begin?.Invoke(Cell(TipPosition)); }
             else Move?.Invoke(Cell(TipPosition));
         }
@@ -89,10 +99,10 @@ namespace Mandala.Game
             {
                 Pair(out var a, out var b); Vector2 oldMiddle = (a + b) * .5f;
                 float oldDistance = Vector2.Distance(a, b);
-                Vector2 anchor = center + (Normalized(oldMiddle) - Vector2.one * .5f) / Zoom;
+                Vector2 anchor = center + Offset(oldMiddle) / Zoom;
                 pointers[e.pointerId] = Local(e.position); Pair(out a, out b);
-                if (oldDistance > 1) Zoom = Mathf.Clamp(Zoom * Vector2.Distance(a, b) / oldDistance, 1, 4);
-                center = anchor - (Normalized((a + b) * .5f) - Vector2.one * .5f) / Zoom; Refresh();
+                if (oldDistance > 1) Zoom = Mathf.Clamp(Zoom * Vector2.Distance(a, b) / oldDistance, 1, MaxZoom);
+                center = anchor - Offset((a + b) * .5f) / Zoom; Refresh();
             }
             else { pointers[e.pointerId] = Local(e.position); if (!gesture) Paint(pointers[e.pointerId]); }
             e.StopPropagation();
@@ -119,15 +129,26 @@ namespace Mandala.Game
         void Wheel(WheelEvent e)
         {
             if (pointers.Count > 0) return;
-            Vector2 point = Normalized(Local(e.mousePosition)) - Vector2.one * .5f;
+            Vector2 point = Offset(Local(e.mousePosition));
             Vector2 anchor = center + point / Zoom;
-            Zoom = Mathf.Clamp(Zoom * Mathf.Exp(-e.delta.y * .06f), 1, 4); center = anchor - point / Zoom; Refresh(); e.StopPropagation();
+            Zoom = Mathf.Clamp(Zoom * Mathf.Exp(-e.delta.y * .06f), 1, MaxZoom); center = anchor - point / Zoom; Refresh(); e.StopPropagation();
+            Hover(Local(e.mousePosition));
+        }
+        public void Resize(Vector2 viewport, float touchGutter)
+        {
+            CancelAll();
+            float fit = Mathf.Max(1, Mathf.Min(viewport.x, viewport.y - touchGutter));
+            fittedExtents = Vector2.Max(viewport, Vector2.one) / fit;
+            Refresh();
         }
         public void ResetView() { CancelAll(); Zoom = 1; center = Vector2.one * .5f; Refresh(); }
         void Refresh()
         {
-            float half = .5f / Zoom; center.x = Mathf.Clamp(center.x, half, 1 - half); center.y = Mathf.Clamp(center.y, half, 1 - half);
-            View = new Rect(center.x - half, 1 - center.y - half, half * 2, half * 2);
+            Vector2 extents = fittedExtents / Zoom;
+            Vector2 half = extents * .5f, limit = Vector2.Min(half, Vector2.one * .5f);
+            center.x = Mathf.Clamp(center.x, limit.x, 1 - limit.x);
+            center.y = Mathf.Clamp(center.y, limit.y, 1 - limit.y);
+            View = new Rect(center.x - half.x, 1 - center.y - half.y, extents.x, extents.y);
         }
     }
 }

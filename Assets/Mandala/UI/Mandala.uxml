@@ -1,40 +1,57 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
     <ui:Style src="Mandala.uss" />
-    <ui:VisualElement name="safeArea" class="screen">
-        <ui:Label text="SAND MANDALA" class="eyebrow" />
-        <ui:Label text="A little color. A quiet moment." class="title" />
-        <ui:Label name="progress" class="progress" />
+    <ui:VisualElement class="screen" picking-mode="Ignore">
+        <ui:Image name="water" class="water" picking-mode="Ignore" />
         <ui:VisualElement name="traySpace" class="tray-space">
-            <ui:Image name="tray" class="tray" />
+            <ui:Image name="tray" class="tray" picking-mode="Ignore" />
         </ui:VisualElement>
-        <ui:Label name="message" text="Touch below the tip · Two fingers to move and zoom" class="message" />
-        <ui:VisualElement class="row palette">
-            <ui:Button name="color0" text="1" tooltip="Marigold" class="swatch marigold" />
-            <ui:Button name="color1" text="2" tooltip="Terracotta" class="swatch terracotta" />
-            <ui:Button name="color2" text="3" tooltip="Lagoon" class="swatch lagoon" />
-            <ui:Button name="color3" text="4" tooltip="Ivory" class="swatch ivory" />
-            <ui:Button name="color4" text="5" tooltip="Indigo" class="swatch indigo" />
+        <ui:VisualElement name="safeArea" class="hud" picking-mode="Ignore">
+            <ui:VisualElement name="progress" class="progress-panel floating" picking-mode="Ignore">
+                <ui:Label text="Pouring" class="progress-label" picking-mode="Ignore" />
+                <ui:VisualElement class="meter" picking-mode="Ignore">
+                    <ui:VisualElement name="pourFill" class="meter-fill" picking-mode="Ignore" />
+                </ui:VisualElement>
+                <ui:VisualElement name="cleanup" class="cleanup hidden" picking-mode="Ignore">
+                    <ui:Label text="Clean up" class="progress-label" picking-mode="Ignore" />
+                    <ui:VisualElement class="meter" picking-mode="Ignore">
+                        <ui:VisualElement name="cleanupFill" class="meter-fill cleanup-fill" picking-mode="Ignore" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:Button name="release" text="Let go" class="release floating hidden" />
+            <ui:VisualElement name="palette" class="row palette floating" picking-mode="Ignore">
+                <ui:Button name="color0" tooltip="Marigold" class="swatch marigold" />
+                <ui:Button name="color1" tooltip="Terracotta" class="swatch terracotta" />
+                <ui:Button name="color2" tooltip="Lagoon" class="swatch lagoon" />
+                <ui:Button name="color3" tooltip="Ivory" class="swatch ivory" />
+                <ui:Button name="color4" tooltip="Indigo" class="swatch indigo" />
+            </ui:VisualElement>
+            <ui:VisualElement class="row tools floating" picking-mode="Ignore">
+                <ui:Button name="pour" tooltip="Pour" />
+                <ui:Button name="vacuum" tooltip="Vacuum" />
+                <ui:Button name="sweep" tooltip="Sweep" />
+                <ui:Button name="rake" tooltip="Rake" />
+            </ui:VisualElement>
+            <ui:VisualElement name="rakePatterns" class="row rake-patterns floating hidden" picking-mode="Ignore">
+                <ui:Button name="rakeSpiral" text="Spiral" tooltip="Rake a slow spiral through your sand" />
+                <ui:Button name="rakePetals" text="Petals" tooltip="Rake a six-petal loop through your sand" />
+                <ui:Button name="rakeWaves" text="Waves" tooltip="Rake flowing waves through your sand" />
+                <ui:Button name="rakeStop" text="Stop" />
+            </ui:VisualElement>
+            <ui:VisualElement name="menuDismiss" class="cover hidden" />
+            <ui:VisualElement name="settings" class="settings floating hidden">
+                <ui:Button name="sound" text="Sound on" />
+                <ui:Button name="guides" text="Guides on" />
+                <ui:Button name="clear" text="Clear tray" />
+            </ui:VisualElement>
+            <ui:Button name="menu" text="Menu" class="menu floating" />
         </ui:VisualElement>
-        <ui:VisualElement class="row">
-            <ui:Button name="pour" text="Pour" /><ui:Button name="vacuum" text="Vacuum" /><ui:Button name="sweep" text="Sweep" /><ui:Button name="rake" text="Rake" />
-        </ui:VisualElement>
-        <ui:VisualElement name="rakePatterns" class="row rake-patterns hidden">
-            <ui:Button name="rakeSpiral" text="Spiral" tooltip="Rake a slow spiral through your sand" />
-            <ui:Button name="rakePetals" text="Petals" tooltip="Rake a six-petal loop through your sand" />
-            <ui:Button name="rakeWaves" text="Waves" tooltip="Rake flowing waves through your sand" />
-            <ui:Button name="rakeStop" text="Stop" />
-        </ui:VisualElement>
-        <ui:VisualElement class="row">
-            <ui:Button name="undo" text="Undo" /><ui:Button name="guides" text="Guides on" /><ui:Button name="sound" text="Sound on" />
-        </ui:VisualElement>
-        <ui:VisualElement class="row">
-            <ui:Button name="resetView" text="Fit tray" /><ui:Button name="release" text="Let go" /><ui:Button name="clear" text="Clear" />
-        </ui:VisualElement>
-        <ui:VisualElement name="dialog" class="dialog-overlay hidden">
-            <ui:VisualElement class="dialog-card">
-                <ui:Label name="dialogTitle" class="title" />
+        <ui:VisualElement name="dialog" class="cover dialog-overlay hidden">
+            <ui:VisualElement class="dialog-card floating">
+                <ui:Label name="dialogTitle" class="dialog-title" />
                 <ui:Label name="dialogText" class="dialog-text" />
-                <ui:Button name="confirm" /><ui:Button name="cancel" />
+                <ui:Button name="confirm" />
+                <ui:Button name="cancel" />
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

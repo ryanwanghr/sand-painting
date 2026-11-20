@@ -1,37 +1,93 @@
-.screen { flex-grow: 1; background-color: #233d37; color: #f0e3bd; padding: 16px; }
-.eyebrow { font-size: 13px; letter-spacing: 4px; -unity-text-align: middle-center; margin-top: 4px; color: #cbb988; }
-.title { font-size: 23px; -unity-text-align: middle-center; white-space: normal; margin-top: 6px; margin-bottom: 6px; }
-.progress { font-size: 13px; -unity-text-align: middle-center; color: #d6d9c6; margin-bottom: 6px; }
-.tray-space { flex-grow: 1; flex-shrink: 1; min-height: 80px; align-items: center; justify-content: center; overflow: hidden; }
-.tray { flex-shrink: 0; overflow: hidden; }
-.message { min-height: 40px; font-size: 13px; white-space: normal; -unity-text-align: middle-center; margin-top: 8px; margin-bottom: 4px; }
-.row { flex-direction: row; flex-shrink: 0; }
-Button { flex-grow: 1; flex-basis: 0; min-height: 46px; margin: 3px; border-width: 1px; border-color: #718277; border-radius: 10px; background-color: #304f46; color: #f4ead2; font-size: 15px; -unity-text-align: middle-center; }
-Button:active { background-color: #567163; }
-Button:disabled { opacity: 0.45; }
-Button.selected { border-color: #f8edce; border-width: 3px; background-color: #536c54; }
-.palette { margin-top: 2px; margin-bottom: 8px; }
-.swatch { min-height: 48px; border-radius: 24px; color: #192b27; -unity-font-style: bold; }
-.marigold { background-color: #d8a740; }
-.terracotta { background-color: #bc6751; }
-.lagoon { background-color: #558e88; }
-.ivory { background-color: #f0e3bd; }
-.indigo { background-color: #696e98; }
-.swatch.selected { border-color: #fff8df; }
-.swatch.marigold.selected { background-color: #d8a740; }
-.swatch.terracotta.selected { background-color: #bc6751; }
-.swatch.lagoon.selected { background-color: #558e88; }
-.swatch.ivory.selected { background-color: #f0e3bd; }
-.swatch.indigo.selected { background-color: #696e98; }
-.dialog-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background-color: rgba(12,25,22,0.86); align-items: center; justify-content: center; }
-.dialog-card { background-color: #304f46; border-radius: 18px; padding: 20px; margin: 24px; max-width: 420px; }
-.dialog-text { white-space: normal; font-size: 16px; margin-bottom: 16px; -unity-text-align: middle-center; }
-.dialog-card Button { flex-grow: 0; flex-basis: auto; }
-.hidden { display: none; }
-.tool-button { flex-direction: column; align-items: center; justify-content: center; min-height: 66px; padding-left: 2px; padding-right: 2px; }
-.tool-icon { width: 38px; height: 42px; flex-shrink: 0; }
-.tool-caption { font-size: 14px; padding: 0; margin: 0; }
-.rake-patterns Button { min-height: 42px; font-size: 13px; }
+.screen {
+    flex-grow: 1;
+    background-color: #72a8aa;
+    color: #f0e3bd;
+    --panel: rgba(25, 47, 41, 0.93);
+    --rim: rgba(193, 207, 169, 0.38);
+    --ink: #f4ead2;
+}
+.tray-space, .tray { position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; }
+.water, .hud, .cover { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+.floating { background-color: var(--panel); border-width: 1px; border-color: var(--rim); border-radius: 13px; }
 
+.progress-panel { position: absolute; left: 0; top: 0; width: 142px; padding: 7px 10px 9px; }
+.progress-label { padding: 0; margin: 0 0 4px; font-size: 11px; color: var(--ink); }
+.meter { height: 5px; border-radius: 4px; background-color: rgba(232, 220, 187, 0.22); overflow: hidden; }
+.meter-fill { width: 0%; height: 100%; border-radius: 4px; background-color: #e7ba65; }
+.cleanup { margin-top: 7px; }
+.cleanup-fill { background-color: #a6d1b4; }
+
+.row { flex-direction: row; flex-shrink: 0; padding: 3px; }
+Button {
+    flex-grow: 1; flex-basis: 0; min-height: 38px; margin: 2px;
+    border-width: 1px; border-color: transparent; border-radius: 8px;
+    padding: 2px 4px; background-color: rgba(220, 226, 195, 0.08);
+    color: var(--ink); font-size: 13px; -unity-text-align: middle-center;
+}
+Button:hover, Button:active { background-color: #49675a; }
+Button:focus { border-color: #f0dfb0; }
+Button:disabled { opacity: 0.4; }
+Button.selected { border-color: #cfbc89; background-color: #405b4e; }
+
+.palette, .tools, .rake-patterns { position: absolute; align-self: center; width: 100%; max-width: 320px; }
+.palette { bottom: 63px; }
+.tools { bottom: 0; }
+.rake-patterns { bottom: 117px; }
+
+.swatch { min-width: 0; min-height: 38px; align-items: center; justify-content: center; }
+.swatch.unfinished { border-color: var(--rim); }
+.swatch.selected { border-color: #f7e7b3; }
+.swatch.complete { opacity: 0.57; }
+.swatch.complete:hover, .swatch.complete:focus { opacity: 0.84; }
+.marigold { --pigment: #d8a740; }
+.terracotta { --pigment: #bc6751; }
+.lagoon { --pigment: #558e88; }
+.ivory { --pigment: #f0e3bd; }
+.indigo { --pigment: #696e98; }
+.swatch-chip {
+    width: 21px; height: 21px; border-radius: 11px; padding: 0; margin: 0 0 3px;
+    background-color: var(--pigment); color: #182520;
+    font-size: 12px; -unity-font-style: bold; -unity-text-align: middle-center;
+}
+.terracotta .swatch-chip, .indigo .swatch-chip { color: #fff7e2; }
+.swatch-meter { height: 4px; width: 82%; max-width: 35px; }
+.swatch-meter .meter-fill { background-color: var(--pigment); }
+.free-paint .swatch-meter { display: none; }
+
+.tool-button { flex-direction: column; align-items: center; justify-content: center; min-height: 48px; padding: 1px; }
+.tool-icon { width: 26px; height: 28px; flex-shrink: 0; }
+.tool-caption { font-size: 11px; padding: 0; margin: 0; }
+.rake-patterns Button { min-height: 32px; font-size: 12px; }
+
+.menu, .release { position: absolute; margin: 0; padding: 2px 11px; border-color: var(--rim); border-radius: 11px; background-color: var(--panel); }
+.menu { right: 0; top: 0; }
+.release { left: 0; top: 86px; background-color: #dac18c; color: #192b24; }
+.release:hover, .release:active { background-color: #eed7a5; }
+.settings { position: absolute; right: 0; top: 44px; width: 126px; padding: 3px; }
+.settings Button { flex-grow: 0; flex-basis: auto; }
+
+.wide .progress-panel { width: 108px; left: 0; }
+.wide .palette, .wide .tools { flex-direction: column; bottom: 0; }
+.wide .palette { right: 0; width: 52px; }
+.wide .tools { left: 0; width: 58px; }
+.wide .palette Button, .wide .tools Button { flex-grow: 0; flex-basis: auto; min-height: 28px; }
+.wide .swatch-chip { width: 17px; height: 17px; margin-bottom: 2px; font-size: 10px; }
+.wide .tool-icon { width: 17px; height: 18px; }
+.wide .tool-caption { font-size: 9px; }
+.wide .rake-patterns { bottom: 0; width: 58px; left: 64px; flex-direction: column; }
+.wide .rake-patterns Button { flex-grow: 0; flex-basis: auto; min-height: 26px; font-size: 10px; }
+.wide .release { left: 116px; top: 0; }
+.wide.compact .palette Button, .wide.compact .tools Button { min-height: 22px; margin: 1px; }
+.wide.compact .swatch-chip { width: 14px; height: 14px; margin-bottom: 1px; font-size: 9px; }
+.wide.compact .tool-icon { height: 12px; }
+.wide.compact .menu { min-height: 30px; }
+
+.dialog-overlay { background-color: rgba(12, 25, 22, 0.7); align-items: center; justify-content: center; }
+.dialog-card { width: 86%; max-width: 340px; padding: 15px; }
+.dialog-title { font-size: 19px; white-space: normal; -unity-text-align: middle-center; }
+.dialog-text { white-space: normal; font-size: 14px; margin-bottom: 10px; -unity-text-align: middle-center; }
+.dialog-card Button { flex-grow: 0; flex-basis: auto; }
+
+.hidden { display: none; }
 .guide-labels { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; }
 .guide-number { position: absolute; padding: 0; margin: 0; color: #434a3f; -unity-text-align: middle-center; -unity-font-style: bold; }

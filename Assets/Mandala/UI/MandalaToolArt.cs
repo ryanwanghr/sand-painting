@@ -152,7 +152,9 @@ namespace Mandala.Game
             generateVisualContent += context =>
             {
                 if (contentRect.width < 1 || contentRect.height < 1) return;
-                MandalaToolArt.Draw(context.painter2D, tool, new Vector2(12, 5), .46f, 22, 0, 0, SandTexture.Palette[0]);
+                float scale = Mathf.Min(contentRect.width / 68, contentRect.height / 82);
+                Vector2 origin = contentRect.center - new Vector2(10, 32) * scale;
+                MandalaToolArt.Draw(context.painter2D, tool, origin, scale, 22, 0, 0, SandTexture.Palette[0]);
             };
         }
     }

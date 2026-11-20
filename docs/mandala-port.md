@@ -39,22 +39,25 @@ preferences, so it survives restarts, and reuses an existing matching preset.
 
 ## Structure
 
-- `Core/SandTray.cs`: 440 × 440 horizontal grid, 24 colored layers, seeded random
+- `Core/SandTray.cs`: 880 × 880 horizontal grid, 24 colored layers, seeded random
   emission, airborne reservations, interpolated brush contact, conservative sweep,
   vacuum, settling, snapshots. No GameObjects or Rigidbody per grain.
-- `Core/MandalaProgress.cs`: 51 connected sections, 98% completion, reopening below
-  80%, protected sand, 98% global empty space and 95% enclosed-gap cleanliness.
+- `Core/MandalaProgress.cs`: 51 connected sections. Completion requires three or
+  more settled layers and the guide color on top in at least 98% of each
+  section's cells. Cleanup requires 98% global empty space and 95% enclosed-gap
+  cleanliness.
   Victory requires one uninterrupted settled second and fires once per tray.
 - `Core/MandalaSave.cs`: versioned compressed binary format with bounded reads,
-  temporary-file replacement and previous-save backup. Stored at
+  temporary-file replacement, previous-save backup, and migration from 440 × 440
+  trays. Stored at
   `Application.persistentDataPath/mandala-v1.sand`; independent of browser saves.
 - `Presentation/SandTexture.cs`: uploads color/height, section feedback/coverage, and
-  airborne-grain fields from the unchanged simulation. Renders to a reusable
+  airborne-grain fields from the simulation. Renders to a reusable
   viewport-sized RenderTexture, at physical display resolution (64–2048 pixels
   per side). Pan/zoom redraws the visible area without allocating a giant texture.
   Simulation changes refresh at up to 30 Hz; view/size changes refresh immediately.
 - `Resources/MandalaSurface.shader`: analytic, antialiased guide curves and tray rim,
-  composited over the 440 × 440 material grid. Thin sand resolves into irregular,
+  composited over the 880 × 880 material grid. Thin sand resolves into irregular,
   tray-anchored grains; deeper layers become continuous. Height gradients light
   pile edges and cast short shadows. See [Sand depth rendering](sand-depth.md).
   The Resources asset ensures the shader is included in players.
@@ -76,8 +79,8 @@ faint target-color fills. Completion glow and synthesized sound are adapted to
 Unity; browser photo download and browser persistence migration are outside this
 mobile gameplay port. Vacuum uses surface removal without the source's decorative
 flying debris. A fixed grid is appropriate for the underlying
-tray simulation. The renderer now uses GPU shading at display resolution; the simulation
-remains on the CPU at 440 × 440. Continuous sand retains the cell texture, while
+tray simulation. The renderer uses GPU shading at display resolution. The simulation
+runs on the CPU at 880 × 880. Continuous sand retains the cell texture, while
 thin coverage, guide curves, rim, and UI text resolve at display resolution.
 
 ## Validation
@@ -141,13 +144,12 @@ recreated if a Play Mode script reload invalidates them. With Play Mode running
 and Sound on, use **Tools > Mandala > Test Completion Sound** to test directly.
 Playback, clip recovery, distinct source reuse, and tool ducking were checked in Unity.
 
-There is no measured cross-device maximum resolution yet. Keep the sand grid at
-440 × 440 for broad-device development. 660² has 2.25× as many cells; 880² has 4×.
-Full-grid loops and array memory grow with cell count, while some brush operations
-can have additional costs. Eight full undo snapshots alone use about 36.9 MiB at
-440², 83.1 MiB at 660², or 147.7 MiB at 880², excluding the live simulation,
-rendering, saves, and runtime overhead. Changing the grid also requires coordinated
-brush, shader, and save-format changes; it is not a display setting.
+The 880 × 880 grid has four times as many cells as the original 440 × 440 grid.
+Each layer holds a quarter of its earlier volume per cell, so rates measured in
+grains per second scale with area. Brush reach and motion scale with distance.
+Settling scans the tiles affected by recent changes. Eight full undo snapshots
+use about 160 MiB at 880 × 880, excluding the live simulation, rendering,
+saves, and runtime overhead. Cross-device performance is still unmeasured.
 
 Display resolution is a different budget. 1080 × 2260 is a preview baseline, not a
 measured guarantee. The visible tray render target currently caps at 2048²; that

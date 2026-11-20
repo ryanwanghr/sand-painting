@@ -1,13 +1,52 @@
 # Sand depth rendering
 
+## Completed section colors
+
+Completing a section requires at least 98% of its cells to have three or more
+settled layers and the guide color on top. Completion assists its color
+and adds an invisible lip around its perimeter, including edges shared with
+other colors. Adjoining sections share
+one lip per grid edge. The lip holds the bottom three layers, and higher sand
+can spill over. During painting, the vacuum preserves completed sections while cleaning
+unfinished sections and gaps. A rolling grain's current position determines
+whether the vacuum can pick it up.
+
+Occupied cells in a completed section display its guide color, including moving
+grains at their current position. Grains recover their original appearance in a
+gap or an unfinished section. Empty cells stay empty.
+
+Section completion remains earned even after its sand is disturbed or removed.
+Finishing the whole painting requires all sections to be complete and meet
+the 98% coverage threshold, with clean gaps and a settled second after the tools
+and moving grains stop.
+
+Choosing **Let go** bakes each completed section's color through every occupied
+layer before turning color assistance and vacuum protection off. Intact lips
+continue to hold the edge until a sweep or vacuum stroke touches it. Each stroke
+opens only the segments under its path, so sand can spill there while the rest
+of the picture stays supported. Undo restores the lip state from before the
+stroke. Undoing **Let go** also restores the original pigments and assistance.
+Version 3 saves record the intact segments. Painting saves rebuild lips around
+completed sections when loaded. Released saves retain their saved openings.
+
+**Tools > Mandala > Run Completion Color Checks** covers temporary coloring,
+earned completion, coverage, movement inside colored areas, release
+during motion, full-depth baking, undo, clear, persistence, and old saves.
+**Run Section Lip Checks** verifies shared color edges, cleanup, overflow, local
+sweep and vacuum openings, undo, and saved edges.
+**Run Completion Color Rendering Checks** verifies actual GPU output and requires
+the completed picture to be pixel-identical immediately before and after baking.
+
+## Surface depth
+
 Sand height now controls coverage as well as surface lighting:
 
 - A thin deposit shows scattered colored grains with the tray visible between them.
-- Coverage fills in gradually across layers two, three, and four; five layers
-  fully cover the tray.
+- Two layers cover more of the tray while leaving visible gaps between grains.
+  Three layers give full coverage.
 - Deep layers add lit slopes and short shadows within the sand that reveal
   raised edges and lower furrows. Exposed tray stays unshadowed beside piles,
-  so vacuuming around protected sections leaves a clean surface.
+  so vacuuming beside dense piles leaves a clean surface.
 
 The five palette hues stay consistent for color matching. Grain placement,
 spacing, size, and shape vary reproducibly in tray coordinates. Panning and
@@ -57,8 +96,9 @@ readback tolerance. Height and layer arrays remain byte-for-byte unchanged.
 
 ![Thin, medium, and deep sand at full view and zoom](screenshots/sand-depth-comparison.png)
 
-This isolated material comparison shows one, three, and five layers from left
-to right. Full tray views are above, with close views below. The same five-layer
+This comparison predates the three-layer coverage change and shows one, three,
+and five layers from left to right. Full tray views are above, with close views
+below. The same five-layer
 depressions run through the middle and right samples, retaining at least one
 layer of sand so lower surfaces can be compared with their shoulders. These are
 rendering fixtures, not screenshots of a player's painting.
@@ -78,8 +118,8 @@ stream without reducing its total volume. Contact is integrated along moving str
 drags keep a continuous trail and comparable volume at different sampling rates.
 Holding the tip builds a pile instead of distributing every new grain into the
 lowest cells across the whole footprint. Falling grains, original colors,
-protected sections, stack limits, saves, and undo continue to apply. The settling
-region remains broad enough for a held pour to spread beyond the smaller nozzle.
+completed-section coloring, stack limits, saves, and undo continue to apply. Settling can
+continue beyond the nozzle and after the stroke ends.
 
 Settling examines 16 nearby downhill directions, including diagonal and short
 rolling paths, and chooses the steepest available slope. Stable sub-layer surface
@@ -87,16 +127,15 @@ roughness resolves integer-height ties equally in every direction, rather than
 adding a rounding penalty only to diagonal and rolling paths. This reduces axis
 bias in the opaque pile body as well as the sparse fringe. Transfers require at
 least a two-layer drop, so the roughness does not shuffle isolated residue.
-Short rolling paths respect intervening protected
-cells and raised barriers.
-Direction tie-breaking varies across cells and simulation steps. Protected sand
+Short rolling paths respect intervening raised barriers.
+Direction tie-breaking varies across cells and simulation steps. Raised barriers
 and the tray boundary still constrain spreading.
 
 **Tools > Mandala > Run Round Pile Checks** verifies centered, roughly circular
 outward growth during 2-, 6-, and 12-second stationary pours at two tip alignments,
 and round outer and opaque contours during holds up to 60 seconds, as well as
 mass/color conservation and the release tail. The existing 24-layer stack limit
-and finite settling region still bound how much an indefinitely held pour accepts;
+still bounds how much an indefinitely held pour accepts;
 this remains a discrete height-field approximation of sand.
 
 ![Round pile growth at 2, 6, and 12 seconds](screenshots/round-pour-growth.png)
@@ -106,7 +145,48 @@ right at the same view scale. The contour retains small grain-level variations.
 
 **Tools > Mandala > Run Pour Checks** verifies increased total flow, a thicker
 center, a feathered edge, moving trail continuity, sampling consistency, landing,
-snapshots, protection, color changes during a pour, and saturated piles.
+snapshots, completion assistance, color changes during a pour, and saturated piles.
+
+## Visible downhill rolling
+
+Downhill transfers now take time. A grain leaves its original stack, travels
+between neighboring cells at 20–42 cells per second depending on slope, then
+lands in a reserved destination slot. A source can have one outgoing transfer
+in flight; an arriving grain cannot begin another hop in that same tick. The
+simulation reads a consistent snapshot of occupied and reserved heights for its
+downhill choices, using a resting slope of 1.5 layers per cell and the existing
+stable surface roughness. The four extra immediate settling scans during pouring
+have been removed. The same settling pass continues after release.
+
+Only moving surface grains need fractional positions. Settled sand remains on
+the 440 × 440 grid with 24 layers. A dynamic mesh draws up to 4,096 small shaded
+grains directly into the visible tray texture, preserving fractional movement
+and original colors without another texture upload. When that budget fills,
+additional material waits in place. The mesh and simulation bookkeeping add
+memory and CPU/GPU work; device frame-time impact has not been measured.
+
+![Terracotta rolling down a gold hill](screenshots/rolling-sand.gif)
+
+This isolated Unity-rendered preview pours terracotta onto an existing gold hill,
+then lets it roll and settle after release. The simulation advances at 60 Hz;
+the preview samples it at 20 frames per second.
+
+`Mass()` includes rolling material and excludes airborne pour grains, as before
+for the latter. Snapshots land moving grains at their reserved destinations so
+saving and undo preserve every accepted grain without changing the save format.
+Clear and restore discard all transfers and reservations. The vacuum can capture
+rolling grains and turn them into its existing removal animation. A destination
+accepted before departure retains its reservation if a section completes in flight;
+new transfers respect stack capacity and intervening raised barriers. Completion waits
+until both airborne and rolling grains finish, and the final settled state is saved.
+
+**Tools > Mandala > Run Rolling Sand Checks** checks timed motion, slope-dependent
+speed, movement after release, no same-tick cascades, exact material/color
+conservation, reservations, saves, undo, clear, completion assistance, vacuuming in flight,
+particle-budget saturation, stack capacity, and completion timing.
+**Tools > Mandala > Run Rolling Sand Rendering Checks** reads actual GPU output to
+check position and Y orientation, quarter-cell motion, opaque tray coverage,
+cached settled surfaces, and clearing the final rolling frame.
 
 ## Softer pouring animation
 
@@ -117,16 +197,22 @@ over 30 milliseconds, and fade out during the final 1.5 cells of their fall.
 Fractional falling positions blend between neighboring rows to soften movement.
 Overlapping pour grains stay translucent instead of building into opaque pixels.
 
-Active pouring and its airborne tail redraw at up to 60 Hz. During pouring, settled
-color/height and section-feedback uploads remain at 30 Hz, with immediate refresh for view
-changes and undo. The final airborne frame clears automatically after release.
-The fast flow, deposited volume, palette, and five-layer coverage ramp are retained.
+Active pouring and its airborne tail redraw at up to 60 Hz. Whenever the simulation
+changes the sand, its color/height and section-feedback fields refresh on the next
+displayed frame, bypassing the animation deadlines. This shows intermediate landing
+and settling states at up to the simulation's 60 Hz rate, including after release.
+Multiple simulation steps within one displayed frame upload only their latest state.
+Animation-only frames can still reuse the settled surface, with the existing 30 Hz
+feedback refresh and immediate refresh for view changes and undo. The final airborne
+frame clears automatically after release.
+The fast flow, deposited volume, and palette are retained.
 
 **Tools > Mandala > Run Pour Animation Checks** verifies stable half-density,
 opacity, actual GPU output, fades, list compaction without flicker, fractional
 movement, release cleanup, cached surface refresh, and unchanged material mass.
-An isolated runtime check also verifies the separate 60/30 Hz animation and
-surface deadlines, and that every grain lands after release.
+An isolated runtime check verifies that surface changes bypass both future render
+deadlines, animation-only frames can reuse the surface, and every grain lands after
+release.
 
 ![Original and softened pouring animation](screenshots/pour-animation-comparison.png)
 
@@ -141,10 +227,10 @@ unity command script eval --caller plugin --skill unity-cli \
 ```
 
 Checks render isolated trays and read the actual GPU output. They verify sparse
-one-layer residue, a visible increase at every layer through five, full five-layer coverage,
+one-layer residue, increased coverage at two layers, full coverage at three layers,
 stable grains over time, panning and zooming,
 stable dense grain detail, soft exposed edges, clean tray beside low and tall piles,
-shaded sand furrows, all five palette hues, identical curved contours at five and
+shaded sand furrows, all five palette hues, identical curved contours at three and
 24 layers, touching colors without exposed tray seams, unchanged
 simulation material, and removal of all residual shading after clearing. The
 existing rendering and color-highlight checks also pass in Unity 6000.6.9f1.

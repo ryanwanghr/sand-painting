@@ -37,7 +37,7 @@ namespace Mandala.Game
                     float a = t * Mathf.PI * 6;
                     offset = new Vector2(-142 * Mathf.Cos(a), Mathf.Lerp(-104, 104, t) + 9 * Mathf.Sin(a * 2));
                 }
-                points[i] = Vector2.one * (SandTray.Size / 2f) + offset;
+                points[i] = Vector2.one * (SandTray.Size / 2f) + offset * SandTray.GridScale;
                 if (i > 0) Length += Vector2.Distance(points[i - 1], points[i]);
             }
             Position = points[0];

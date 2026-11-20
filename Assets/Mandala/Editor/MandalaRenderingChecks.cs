@@ -7,6 +7,8 @@ namespace Mandala.Game.Editor
 {
     public static class MandalaRenderingChecks
     {
+        const int Scale = SandTray.GridScale, ReferenceSize = SandTray.ReferenceSize;
+
         static void Require(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException(message);
@@ -33,14 +35,14 @@ namespace Mandala.Game.Editor
             var progress = new MandalaProgress(tray);
             using (var surface = new SandTexture(progress.Sections.Count))
             {
-                surface.SetViewport(512, new Rect(0, 0, 1, 1));
+                surface.SetViewport(512, new Rect(.25f, .25f, .5f, .5f));
                 Color32[] Field()
                 {
                     var field = (Texture2D)typeof(SandTexture).GetField("grains",
                         System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(surface);
                     return field.GetPixels32();
                 }
-                int Pixel(int cell, int lift = 4) => (SandTray.Size - 1 - cell / SandTray.Size + lift) * SandTray.Size + cell % SandTray.Size;
+                int Pixel(int cell, int lift = 4 * Scale) => (SandTray.Size - 1 - cell / SandTray.Size + lift) * SandTray.Size + cell % SandTray.Size;
                 int Peak(Color32[] pixels) { int peak = 0; foreach (var pixel in pixels) peak = Mathf.Max(peak, pixel.a); return peak; }
                 surface.Render(tray, progress, false, 0);
                 var empty = Read(surface.Texture);
@@ -49,9 +51,9 @@ namespace Mandala.Game.Editor
                     var cells = new int[64];
                     for (int n = 0; n < cells.Length; n++)
                     {
-                        int cell = (190 + n / 8 * 8) * SandTray.Size + 190 + n % 8 * 8;
+                        int cell = ((190 + n / 8 * 8) * SandTray.Size + 190 + n % 8 * 8) * Scale;
                         cells[n] = cell;
-                        tray.Grains.Add(new SandTray.Grain { Cell = cell, Color = 4, Lift = 4, Velocity = 40, Age = .1f, Id = (uint)n });
+                        tray.Grains.Add(new SandTray.Grain { Cell = cell, Color = 4, Lift = 4 * Scale, Velocity = 40 * Scale, Age = .1f, Id = (uint)n });
                     }
                     surface.Render(tray, progress, false, 0);
                     Color32[] initial = Field(); int visible = 0;
@@ -89,22 +91,22 @@ namespace Mandala.Game.Editor
                     surface.Render(tray, progress, false, 1, false);
                     int appearing = Peak(Field());
                     Require(appearing > 0 && appearing < 100, "New grains must fade in below their peak opacity.");
-                    for (int n = 0; n < tray.Grains.Count; n++) { var grain = tray.Grains[n]; grain.Age = .1f; grain.Lift = .75f; tray.Grains[n] = grain; }
+                    for (int n = 0; n < tray.Grains.Count; n++) { var grain = tray.Grains[n]; grain.Age = .1f; grain.Lift = .75f * Scale; tray.Grains[n] = grain; }
                     surface.Render(tray, progress, false, 1, false);
                     int landing = Peak(Field());
                     Require(landing > 0 && landing < 100, "Grains must fade out as they approach the sand.");
 
-                    for (int n = 0; n < tray.Grains.Count; n++) { var grain = tray.Grains[n]; grain.Lift = 4.25f; tray.Grains[n] = grain; }
+                    for (int n = 0; n < tray.Grains.Count; n++) { var grain = tray.Grains[n]; grain.Lift = 4 * Scale + .25f; tray.Grains[n] = grain; }
                     surface.Render(tray, progress, false, 1, false);
                     var moving = Field();
                     int selected = tray.Grains.FindIndex(grain => initial[Pixel(grain.Cell)].a > 0);
                     int movingCell = tray.Grains[selected].Cell;
-                    int a = moving[Pixel(movingCell, 5)].a, b = moving[Pixel(movingCell, 4)].a;
+                    int a = moving[Pixel(movingCell, 4 * Scale + 1)].a, b = moving[Pixel(movingCell, 4 * Scale)].a;
                     Require(a > 0 && b > 0 && a < 153 && b < 153 && Mathf.Abs(a + b - 153) <= 1,
                         "Fractional falling positions must blend smoothly between rows without increasing opacity.");
 
                     tray.Grains.Clear();
-                    for (int y = 214; y < 226; y++) for (int x = 214; x < 226; x++)
+                    for (int y = 214 * Scale; y < 226 * Scale; y++) for (int x = 214 * Scale; x < 226 * Scale; x++)
                         for (int h = 0; h < 8; h++) tray.Add(y * SandTray.Size + x, 0);
                     int mass = tray.Mass();
                     surface.Render(tray, progress, false, 1, false);
@@ -119,7 +121,7 @@ namespace Mandala.Game.Editor
                     Require(tray.Mass() == mass, "Animation and cached rendering must not change deposited mass.");
                     using (var fresh = new SandTexture(progress.Sections.Count))
                     {
-                        fresh.SetViewport(512, new Rect(0, 0, 1, 1)); fresh.Render(tray, progress, false, 1, false);
+                        fresh.SetViewport(512, new Rect(.25f, .25f, .5f, .5f)); fresh.Render(tray, progress, false, 1, false);
                         var first = Read(fresh.Texture);
                         try { Require(Mathf.Abs(first.GetPixel(256, 256).b - empty.GetPixel(256, 256).b) > .1f, "An animation-only first call must initialize the settled surface."); }
                         finally { UnityEngine.Object.DestroyImmediate(first); }
@@ -318,7 +320,7 @@ namespace Mandala.Game.Editor
                 finally { UnityEngine.Object.DestroyImmediate(image); }
 
                 // Place a colored patch away from the center, then zoom onto it. Simulation Y points down.
-                for (int y = 320; y < 340; y++) for (int x = 100; x < 120; x++)
+                for (int y = 320 * Scale; y < 340 * Scale; y++) for (int x = 100 * Scale; x < 120 * Scale; x++)
                     for (int h = 0; h < 8; h++) tray.Add(y * SandTray.Size + x, 0);
                 tray.Protection = false;
                 var originalTexture = surface.Texture;
@@ -343,7 +345,7 @@ namespace Mandala.Game.Editor
                         "Dense grain detail must stay subtle when zoomed.");
                 }
                 finally { UnityEngine.Object.DestroyImmediate(image); }
-                Require(tray.Heights.Length == 440 * 440, "Rendering must not resize simulation or saves.");
+                Require(tray.Heights.Length == SandTray.CellCount, "Rendering must not resize simulation or saves.");
                 surface.SetViewport(5000, new Rect(0, 0, 1, 1));
                 Require(surface.Resolution <= 2048, "Surface allocation must remain bounded.");
             }
@@ -357,14 +359,14 @@ namespace Mandala.Game.Editor
             var progress = new MandalaProgress(tray);
             using (var surface = new SandTexture(progress.Sections.Count))
             {
-                // Sixteen pixels per simulation cell, eight per grain seed cell.
-                surface.SetViewport(512, new Rect(204f / 440, 204f / 440, 32f / 440, 32f / 440));
+                // Eight display pixels per grain seed cell.
+                surface.SetViewport(512, new Rect(204f / ReferenceSize, 204f / ReferenceSize, 32f / ReferenceSize, 32f / ReferenceSize));
                 surface.Render(tray, progress, false, 0);
                 var paperImage = Read(surface.Texture);
                 Color[] paper;
                 try { paper = paperImage.GetPixels(); }
                 finally { UnityEngine.Object.DestroyImmediate(paperImage); }
-                for (int y = 196; y < 244; y++) for (int x = 196; x < 244; x++) tray.Add(y * SandTray.Size + x, 0);
+                for (int y = 196 * Scale; y < 244 * Scale; y++) for (int x = 196 * Scale; x < 244 * Scale; x++) tray.Add(y * SandTray.Size + x, 0);
                 int mass = tray.Mass();
                 surface.Render(tray, progress, false, 0);
                 var image = Read(surface.Texture);
@@ -398,7 +400,7 @@ namespace Mandala.Game.Editor
         {
             var tray = new SandTray(17) { Protection = false };
             var progress = new MandalaProgress(tray);
-            var view = new Rect(196f / 440, 196f / 440, 48f / 440, 48f / 440);
+            var view = new Rect(196f / ReferenceSize, 196f / ReferenceSize, 48f / ReferenceSize, 48f / ReferenceSize);
             int resolution = 528;
             using (var surface = new SandTexture(progress.Sections.Count))
             {
@@ -413,13 +415,13 @@ namespace Mandala.Game.Editor
                 void Fill(int height, int color = 0)
                 {
                     tray.Clear(); tray.Protection = false;
-                    for (int y = 200; y < 240; y++) for (int x = 200; x < 240; x++)
+                    for (int y = 200 * Scale; y < 240 * Scale; y++) for (int x = 200 * Scale; x < 240 * Scale; x++)
                         for (int h = 0; h < height; h++) tray.Add(y * SandTray.Size + x, color);
                 }
                 int Pixel(int x, int y, float offsetX = .5f, float offsetY = .5f)
                 {
-                    int px = Mathf.FloorToInt(((x + offsetX) / 440 - view.x) / view.width * resolution);
-                    int py = Mathf.FloorToInt((1 - (y + offsetY) / 440 - view.y) / view.height * resolution);
+                    int px = Mathf.FloorToInt(((x + offsetX) / ReferenceSize - view.x) / view.width * resolution);
+                    int py = Mathf.FloorToInt((1 - (y + offsetY) / ReferenceSize - view.y) / view.height * resolution);
                     return py * resolution + px;
                 }
                 float Difference(Color a, Color b) => Mathf.Max(Mathf.Abs(a.r - b.r), Mathf.Max(Mathf.Abs(a.g - b.g), Mathf.Abs(a.b - b.b)));
@@ -469,18 +471,18 @@ namespace Mandala.Game.Editor
                     return total;
                 }
                 float deepPigment = Pigment(deep), previousStrength = 0;
-                var strengths = new string[5];
-                for (int height = 1; height <= 5; height++)
+                var strengths = new string[3];
+                for (int height = 1; height <= 3; height++)
                 {
                     Fill(height); Color[] layer = Pixels();
                     float strength = Pigment(layer) / deepPigment;
                     strengths[height - 1] = strength.ToString("P0");
                     Require(strength > previousStrength + .025f,
-                        "Each layer through five must visibly increase sand coverage.");
-                    if (height < 5) Require(strength < .99f,
-                        "The coverage ramp must retain a visible difference before five layers.");
-                    else Require(strength > .99f && PaperFraction(layer) < .01f && deepPaper < .01f,
-                        "Five layers and deeper deposits must look continuous.");
+                        "Each layer through three must visibly increase sand coverage.");
+                    if (height < 3) Require(strength < .99f && PaperFraction(layer) > .01f,
+                        "One and two layers must leave some tray visible between grains.");
+                    else Require(Mathf.Abs(strength - 1) < .01f && PaperFraction(layer) < .01f && deepPaper < .01f,
+                        "Three layers must look as continuous as deeper deposits.");
                     previousStrength = strength;
                 }
 
@@ -489,17 +491,17 @@ namespace Mandala.Game.Editor
                 {
                     Fill(height); Color[] anchored = Pixels();
                     Color grain = anchored[Pixel(220, 220, .32f, .32f)];
-                    view.x += 2f / 440;
+                    view.x += 2f / ReferenceSize;
                     surface.SetViewport(resolution, view);
                     Color[] panned = Pixels();
                     Require(Difference(grain, panned[Pixel(220, 220, .32f, .32f)]) < .005f,
                         "Panning must keep sparse and dense grains anchored to the tray.");
-                    view = new Rect(208f / 440, 208f / 440, 24f / 440, 24f / 440); resolution = 264;
+                    view = new Rect(208f / ReferenceSize, 208f / ReferenceSize, 24f / ReferenceSize, 24f / ReferenceSize); resolution = 264;
                     surface.SetViewport(resolution, view);
                     Color[] zoomed = Pixels();
                     Require(Difference(grain, zoomed[Pixel(220, 220, .32f, .32f)]) < .005f,
                         "Zooming at the same sampling density must retain the same tray-anchored grains.");
-                    view = new Rect(196f / 440, 196f / 440, 48f / 440, 48f / 440); resolution = 528;
+                    view = new Rect(196f / ReferenceSize, 196f / ReferenceSize, 48f / ReferenceSize, 48f / ReferenceSize); resolution = 528;
                     surface.SetViewport(resolution, view);
                 }
 
@@ -522,7 +524,7 @@ namespace Mandala.Game.Editor
                     "An exposed contour must not create a heavy lit or shaded bevel on a flat sand surface.");
 
                 // A lower sand surface must still receive shade from its raised neighbors.
-                for (int y = 220; y < 232; y++) for (int x = 220; x < 232; x++)
+                for (int y = 220 * Scale; y < 232 * Scale; y++) for (int x = 220 * Scale; x < 232 * Scale; x++)
                     while (tray.Heights[y * SandTray.Size + x] > 5) tray.Remove(y * SandTray.Size + x);
                 Color[] furrow = Pixels();
                 Require(furrow[Pixel(227, 227)].grayscale - furrow[Pixel(221, 221)].grayscale > .035f,
@@ -541,19 +543,19 @@ namespace Mandala.Game.Editor
                 void Contour(int height)
                 {
                     tray.Clear(); tray.Protection = false;
-                    for (int y = 200; y < 240; y++) for (int x = 200; x < 240; x++)
+                    for (int y = 200 * Scale; y < 240 * Scale; y++) for (int x = 200 * Scale; x < 240 * Scale; x++)
                     {
-                        float dx = x + .5f - 220, dy = y + .5f - 220;
+                        float dx = (x + .5f) / Scale - 220, dy = (y + .5f) / Scale - 220;
                         if (dx * dx + dy * dy >= 18 * 18) continue;
                         int color = dx > dy * .3f ? 1 : 0;
                         for (int h = 0; h < height; h++) tray.Add(y * SandTray.Size + x, color);
                     }
                 }
-                Contour(5); Color[] shallowContour = Pixels();
+                Contour(3); Color[] shallowContour = Pixels();
                 Contour(SandTray.Levels); int contourMass = tray.Mass(); Color[] deepContour = Pixels();
                 for (int i = 0; i < shallowContour.Length; i++)
                     Require(Difference(shallowContour[i], deepContour[i]) < .01f,
-                        "A fully covered footprint must retain the same contour from five layers to maximum height.");
+                        "A fully covered footprint must retain the same contour from three layers to maximum height.");
                 for (int y = 208; y < 232; y++) for (int x = 215; x < 225; x++)
                     Require(deepContour[Pixel(x, y)].b < .5f,
                         "Touching dense colors must not expose pale tray seams along their boundary.");
@@ -561,7 +563,7 @@ namespace Mandala.Game.Editor
                 tray.Clear(); Color[] cleared = Pixels();
                 for (int i = 0; i < paper.Length; i++) Require(Difference(paper[i], cleared[i]) < .005f,
                     "Removing the sand must remove all residue and pile shadows.");
-                return $"Sand depth checks passed: sparse residue ({thinPaper:P0} tray visible), gradual layers 1–5 ({string.Join(", ", strengths)} pigment strength), stable dense grain detail, anchored pan and zoom, clean tray beside piles, soft exposed edges, shaded sand furrows, all five hues, height-independent contours, touching colors without tray seams, unchanged material, clean removal.";
+                return $"Sand depth checks passed: sparse residue ({thinPaper:P0} tray visible), full coverage at three layers ({string.Join(", ", strengths)} pigment strength), stable dense grain detail, anchored pan and zoom, clean tray beside piles, soft exposed edges, shaded sand furrows, all five hues, height-independent contours, touching colors without tray seams, unchanged material, clean removal.";
             }
         }
     }
