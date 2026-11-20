@@ -15,7 +15,7 @@ Shader "Mandala/Calm Water"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _TrayView;
-                float _WaterAspect;
+                float _WaterScale;
                 float _WaterTime;
             CBUFFER_END
 
@@ -39,17 +39,10 @@ Shader "Mandala/Calm Water"
                 return output;
             }
 
-            float reflectedRipple(float2 samplePosition, float2 rimNormal, float2 direction, float frequency, float phase)
-            {
-                float incidence = dot(direction, rimNormal);
-                float crest = sin(dot(samplePosition, direction) * frequency - phase);
-                return crest * smoothstep(.20, .88, -incidence);
-            }
-
             half4 frag(Varyings input) : SV_Target
             {
-                float2 uv = input.uv;
-                float2 p = (uv - .5) * float2(max(1, _WaterAspect), max(1, rcp(_WaterAspect)));
+                float2 tray = _TrayView.xy + input.uv * _TrayView.zw - .5;
+                float2 p = tray * _WaterScale;
                 // Low-contrast bands drift across the water.
                 float bend = .066 * sin(5.5 * p.x + 3.8 * p.y) + .027 * sin(12 * p.x - 6 * p.y);
                 float band = sin(19 * (p.y + .15 * p.x + bend) + _WaterTime * .13);
@@ -58,24 +51,15 @@ Shader "Mandala/Calm Water"
                     smoothstep(-.24, -.18, band));
                 color = lerp(color, float3(.512, .700, .705), smoothstep(.38, .46, band));
 
-                // Reflect waves locally where they meet the rim, using the tray's pan and zoom.
-                float2 tray = _TrayView.xy + uv * _TrayView.zw - .5;
+                // A faint ripple follows the rim and dissolves into the water.
                 float radius = length(tray);
-                float rimDistance = (radius - .5) / min(_TrayView.z, _TrayView.w);
-                if (rimDistance >= 0 && rimDistance < .16)
+                float rimDistance = (radius - .5) * _WaterScale;
+                if (rimDistance >= 0 && rimDistance < .10)
                 {
                     float2 rimNormal = tray / radius;
-                    float2 reflectedPosition = p - 2 * rimDistance * rimNormal;
-                    float warp = .75 * sin(dot(p, float2(19, 13)) - _WaterTime * .32);
-                    float ripple = .65 * reflectedRipple(reflectedPosition, rimNormal, float2(.32, .95),
-                        72, _WaterTime * 1.65 + warp);
-                    ripple += .46 * reflectedRipple(reflectedPosition, rimNormal, float2(-.72, -.69),
-                        106, _WaterTime * 2.19 - warp);
-                    float glints = .5 + .5 * sin(dot(p, float2(24, -12)) + warp + _WaterTime * .27);
-                    float fade = (1 - smoothstep(0, .16, rimDistance)) * lerp(.30, 1, glints);
-                    // The bright side of each crest catches more light than the trough loses.
-                    float light = ripple * lerp(.48, 1, smoothstep(-.10, .45, ripple));
-                    color += light * fade * float3(.073, .093, .089);
+                    float phase = 75 * rimDistance + dot(rimNormal, float2(.9, -.6)) - _WaterTime * 1.1;
+                    float fade = 1 - smoothstep(0, .10, rimDistance);
+                    color += sin(phase) * fade * float3(.012, .020, .020);
                 }
 
                 #if !defined(UNITY_COLORSPACE_GAMMA)

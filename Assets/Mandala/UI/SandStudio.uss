@@ -1,0 +1,115 @@
+.studio-container, .studio { flex-grow: 1; }
+.studio {
+    background-color: #f5efe2;
+    color: #26372f;
+    --paper: #f5efe2;
+    --card: #fcf8ee;
+    --forest: #263e32;
+    --line: #e0d6c3;
+}
+.studio-safe { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; }
+.studio Button {
+    flex-grow: 0;
+    flex-basis: auto;
+    border-width: 1px;
+    border-color: var(--line);
+    background-color: var(--card);
+    color: var(--forest);
+    margin: 0;
+    padding: 0 14px;
+    min-height: 40px;
+    border-radius: 9px;
+    font-size: 13px;
+}
+.studio Button:hover { background-color: #ebe0c9; }
+.studio Button:focus { border-color: #927a4c; }
+.studio-header {
+    flex-direction: row;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--line);
+}
+.studio-brand { font-size: 21px; -unity-font-style: bold; margin: 0; padding: 0; }
+.studio-status { margin: 0; padding: 9px 20px; background-color: #f0dbcc; color: #6a372b; white-space: normal; }
+.studio-scroll { flex-grow: 1; flex-shrink: 1; }
+.studio-content { width: 100%; max-width: 860px; align-self: center; padding: 20px 18px 24px; }
+.studio-title { font-size: 34px; -unity-font-style: bold; white-space: normal; margin: 0 0 2px; padding: 0; }
+.studio-copy { color: #536456; font-size: 14px; white-space: normal; padding: 0; margin: 2px 0 14px; }
+.studio-section { margin-top: 12px; margin-bottom: 14px; }
+.studio-section-title { font-size: 20px; -unity-font-style: bold; white-space: normal; margin: 0 0 10px; padding: 0; }
+.studio-grid { flex-direction: row; flex-wrap: wrap; margin: 0 -5px; }
+.studio Button.studio-card {
+    width: 49.5%;
+    flex-grow: 0;
+    flex-shrink: 0;
+    align-items: stretch;
+    margin: 0;
+    padding: 0 5px 10px;
+    border-width: 1px;
+    border-color: transparent;
+    background-color: transparent;
+}
+.studio Button.studio-card:focus { border-color: #927a4c; }
+.studio-wide .studio-grid-many Button.studio-card { width: 33%; }
+.studio-wide .studio-section { margin-top: 10px; }
+.studio-card-frame {
+    padding: 7px;
+    background-color: var(--card);
+    border-width: 1px;
+    border-color: var(--line);
+    border-radius: 15px;
+}
+.studio-card:hover .studio-card-frame { border-color: #aa9366; }
+.studio-art {
+    align-items: center;
+    justify-content: center;
+    background-color: #e8dbc0;
+    border-width: 1px;
+    border-color: #dcd0b4;
+    border-radius: 10px;
+    height: 146px;
+    overflow: hidden;
+}
+.studio-art.alternate { background-color: #e1e8d9; border-color: #d0dbc8; }
+.studio-art-image { width: 92%; height: 92%; }
+.studio-card-text { padding: 9px 5px 2px; }
+.studio-card-title { font-size: 16px; -unity-font-style: bold; white-space: normal; margin: 0 0 3px; padding: 0; }
+.studio-card-meta { font-size: 12px; color: #566759; white-space: normal; padding: 0; margin: 0; }
+.studio-feature {
+    width: 100%;
+    max-width: 440px;
+    margin-top: 10px;
+    padding: 11px;
+    background-color: var(--card);
+    border-width: 1px;
+    border-color: var(--line);
+    border-radius: 17px;
+}
+.studio-feature .studio-art { height: 270px; }
+.studio-feature .studio-card-text { padding: 12px 4px 10px; }
+.studio-feature .studio-card-title { font-size: 22px; }
+.studio Button.studio-action { margin-top: 8px; min-height: 43px; }
+.studio Button.studio-primary { background-color: var(--forest); color: #fff8e8; border-color: var(--forest); -unity-font-style: bold; }
+.studio Button.studio-primary:hover { background-color: #3e5949; }
+.studio Button.studio-back-button { align-self: flex-start; margin-bottom: 12px; }
+.studio-nav {
+    flex-shrink: 0;
+    align-items: center;
+    padding: 7px 16px 9px;
+    background-color: var(--card);
+    border-top-width: 1px;
+    border-top-color: var(--line);
+}
+.studio-tabs { flex-direction: row; width: 100%; max-width: 510px; }
+.studio Button.studio-tab { flex-grow: 1; flex-basis: 0; margin: 0 3px; border-color: transparent; min-height: 43px; }
+.studio Button.studio-tab:focus { border-color: #927a4c; }
+.studio Button.studio-tab.active { background-color: var(--forest); color: #fff8e8; -unity-font-style: bold; }
+.studio-overlay {
+    position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+    background-color: rgba(25, 39, 31, 0.52);
+    align-items: center; justify-content: center;
+}
+.studio-dialog { width: 88%; max-width: 320px; background-color: var(--paper); padding: 18px; border-radius: 15px; }

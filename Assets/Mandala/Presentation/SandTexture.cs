@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Mandala.Game
 {
-    /// <summary>Uploads simulation fields, then shades only the visible tray at display resolution.</summary>
+    /// <summary>Uploads simulation fields and shades the visible tray.</summary>
     public sealed class SandTexture : IDisposable
     {
         public static readonly Color32[] Palette = { new Color32(216,167,64,255), new Color32(188,103,81,255), new Color32(85,142,136,255), new Color32(240,227,189,255), new Color32(105,110,152,255) };
@@ -14,36 +14,47 @@ namespace Mandala.Game
         public Rect View { get; private set; } = new Rect(0, 0, 1, 1);
         public bool NeedsRedraw { get; private set; } = true;
         public bool HighlightActive { get; private set; }
-        readonly Texture2D colors, feedback, grains;
+        readonly Texture2D colors, feedback, grains, grainDetail;
         readonly Material material;
-        readonly Mesh rollingMesh;
-        readonly List<Vector3> rollingVertices = new List<Vector3>(SandTray.MaxRollingGrains * 4);
-        readonly List<Vector2> rollingUVs = new List<Vector2>(SandTray.MaxRollingGrains * 4);
-        readonly List<Color32> rollingColors = new List<Color32>(SandTray.MaxRollingGrains * 4);
-        readonly List<int> rollingTriangles = new List<int>(SandTray.MaxRollingGrains * 6);
+        readonly bool mobileSurface;
+        const int MaxMovingGrains = SandTray.MaxRollingGrains + SandTray.MaxSuctionGrains;
+        const float MaxSuctionTrail = 1.4f * SandTray.GridScale;
+        readonly Mesh movingMesh;
+        readonly List<Vector3> movingVertices = new List<Vector3>(MaxMovingGrains * 4);
+        readonly List<Vector2> movingUVs = new List<Vector2>(MaxMovingGrains * 4);
+        readonly List<Color32> movingColors = new List<Color32>(MaxMovingGrains * 4);
+        readonly List<int> movingTriangles = new List<int>(MaxMovingGrains * 6);
         readonly Color32[] colorPixels = new Color32[SandTray.CellCount];
         readonly Color32[] feedbackPixels = new Color32[SandTray.CellCount];
         readonly Color32[] grainPixels = new Color32[SandTray.CellCount];
         readonly float[] glows;
         int highlightColor = -1;
         float highlightUntil = -100;
-        bool disposed, surfaceReady;
+        bool disposed, surfaceReady, hadTrayGrains;
 
-        public SandTexture(int sectionCount)
+        public SandTexture(int sectionCount, bool mobileSurface = false)
         {
+            this.mobileSurface = mobileSurface;
             var shader = Resources.Load<Shader>("MandalaSurface");
             if (shader == null || !shader.isSupported)
                 throw new InvalidOperationException("The Mandala surface shader is unavailable on this graphics device.");
             material = new Material(shader) { name = "Mandala surface renderer", hideFlags = HideFlags.HideAndDontSave };
-            rollingMesh = new Mesh { name = "Rolling sand", hideFlags = HideFlags.HideAndDontSave,
+            movingMesh = new Mesh { name = "Moving sand", hideFlags = HideFlags.HideAndDontSave,
                 indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
-            rollingMesh.MarkDynamic();
+            movingMesh.MarkDynamic();
             material.SetVector("_TrayColor", (Vector4)(Color)TrayColor);
             colors = CreateField("Sand color and height", false, FilterMode.Bilinear);
             feedback = CreateField("Section feedback", true, FilterMode.Bilinear);
             grains = CreateField("Airborne sand", false, FilterMode.Point);
+            grains.SetPixels32(grainPixels); grains.Apply(false, false);
             material.SetTexture("_FeedbackTex", feedback);
             material.SetTexture("_GrainsTex", grains);
+            if (mobileSurface)
+            {
+                grainDetail = CreateGrainDetail();
+                material.SetTexture("_GrainDetail", grainDetail);
+                material.EnableKeyword("MANDALA_MOBILE_SURFACE");
+            }
             glows = new float[sectionCount];
         }
 
@@ -51,14 +62,40 @@ namespace Mandala.Game
             new Texture2D(SandTray.Size, SandTray.Size, TextureFormat.RGBA32, false, linear)
             { name = name, filterMode = filter, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.HideAndDontSave };
 
+        static Texture2D CreateGrainDetail()
+        {
+            const int size = 64;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, true, true)
+            {
+                name = "Mandala mobile grain detail", filterMode = FilterMode.Trilinear,
+                wrapMode = TextureWrapMode.Repeat, hideFlags = HideFlags.HideAndDontSave
+            };
+            var pixels = new Color32[size * size];
+            var random = new System.Random(41);
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                byte tone = (byte)random.Next(256);
+                pixels[i] = new Color32(tone, tone, tone, 255);
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(true, true);
+            return texture;
+        }
+
         public bool SetViewport(float physicalWidth, Rect view, float physicalHeight = 0)
         {
             if (physicalHeight <= 0) physicalHeight = physicalWidth;
             // Cap both axes with the same scale so the artwork keeps its aspect.
             int limit = Mathf.Min(2048, SystemInfo.maxTextureSize);
             float scale = Mathf.Min(1, limit / Mathf.Max(1, Mathf.Max(physicalWidth, physicalHeight)));
-            int width = Mathf.Clamp(Mathf.CeilToInt(physicalWidth * scale), 64, limit);
-            int height = Mathf.Clamp(Mathf.CeilToInt(physicalHeight * scale), 64, limit);
+            int minimum = 64;
+            if (mobileSurface)
+            {
+                scale *= .5f;
+                minimum /= 2;
+            }
+            int width = Mathf.Clamp(Mathf.CeilToInt(physicalWidth * scale), minimum, limit);
+            int height = Mathf.Clamp(Mathf.CeilToInt(physicalHeight * scale), minimum, limit);
             bool resized = Texture == null || Texture.width != width || Texture.height != height || !Texture.IsCreated();
             if (resized)
             {
@@ -93,6 +130,7 @@ namespace Mandala.Game
                 glows[s] = elapsed >= 0 && elapsed < .7f ? Mathf.Sin(elapsed / .7f * Mathf.PI) : 0;
             }
             const int spacing = SandTray.GridScale, row = spacing * SandTray.Size, diagonal = row + spacing;
+            const int slopeSpan = 4, slopeSpacing = slopeSpan * spacing, slopeOffset = slopeSpan * diagonal;
             for (int y = 0; y < SandTray.Size; y++)
             for (int x = 0; x < SandTray.Size; x++)
             {
@@ -126,7 +164,18 @@ namespace Mandala.Game
                 if (x >= 2 * spacing && y >= 2 * spacing) horizon = Mathf.Max(horizon, tray.Heights[i - 2 * diagonal] - height - 4);
                 if (x >= 3 * spacing && y >= 3 * spacing) horizon = Mathf.Max(horizon, tray.Heights[i - 3 * diagonal] - height - 7);
                 float shadow = Mathf.Clamp(horizon * .018f, 0, .28f);
-                float lighting = 1 + Mathf.Clamp((right - left + below - above) * .020f, -.10f, .07f) - shadow * .55f;
+
+                // Measure slope along the light over a wider span to reveal the sides of a mound.
+                int towardLight = x >= slopeSpacing && y >= slopeSpacing ? tray.Heights[i - slopeOffset] : height;
+                int awayFromLight = x < SandTray.Size - slopeSpacing && y < SandTray.Size - slopeSpacing
+                    ? tray.Heights[i + slopeOffset] : height;
+                if (towardLight == 0) towardLight = height;
+                if (awayFromLight == 0) awayFromLight = height;
+                float broadSlope = (awayFromLight - towardLight) / (float)slopeSpan;
+                float fineSlope = right - left + below - above;
+                float lighting = 1 + Mathf.Clamp(broadSlope * .047f + fineSlope * .020f, -.24f, .18f) - shadow * .60f;
+                // Preserve the hue of light pigments by scaling all three channels together.
+                lighting = Mathf.Min(lighting, 1f / Mathf.Max(color.r, Mathf.Max(color.g, color.b)));
                 color.r *= lighting; color.g *= lighting; color.b *= lighting;
                 if (tray.Protection && top != target)
                     color = Color.Lerp(color, new Color32(124,82,111,255), .22f);
@@ -140,19 +189,21 @@ namespace Mandala.Game
             surfaceReady = true;
         }
 
-        public void Render(SandTray tray, MandalaProgress progress, bool guides, float time, bool updateSurface = true)
+        void UploadPourGrains(SandTray tray)
         {
-            if (Texture == null) return;
-            if (updateSurface || !surfaceReady) UploadSurface(tray, progress, time);
-            Array.Clear(grainPixels, 0, grainPixels.Length);
+            bool hasTrayGrains = false;
             foreach (var grain in tray.Grains)
             {
-                // Choose one grain per ID pair; list compaction cannot change its visibility in flight.
-                uint hash = (grain.Id >> 1) * 0x9e3779b9u;
-                hash = (hash ^ (hash >> 16)) * 0x7feb352du;
-                if ((grain.Id & 1) != (hash & 1)) continue;
-                float fade = Mathf.Clamp01(grain.Age / .03f) * Mathf.Clamp01(grain.Lift / (1.5f * SandTray.GridScale));
-                Color32 tint = Palette[tray.DisplayColor(new Vector2(grain.Cell % SandTray.Size + .5f, grain.Cell / SandTray.Size + .5f - grain.Lift), grain.Color)]; tint.a = (byte)Mathf.RoundToInt(153 * fade);
+                if (grain.Outlet.HasValue) continue; // The tray overlay draws grains from the handheld pourer.
+                byte opacity = PourGrainOpacity(grain);
+                if (opacity == 0) continue;
+                if (!hasTrayGrains)
+                {
+                    Array.Clear(grainPixels, 0, grainPixels.Length);
+                    hasTrayGrains = true;
+                }
+                Color32 tint = Palette[tray.DisplayColor(grain.Position, grain.Color)];
+                tint.a = opacity;
                 int x = grain.Cell % SandTray.Size;
                 float y = grain.Cell / SandTray.Size - grain.Lift;
                 int row = Mathf.FloorToInt(y);
@@ -160,25 +211,21 @@ namespace Mandala.Game
                 PlotPourGrain(x, row, tint, 1 - blend);
                 PlotPourGrain(x, row + 1, tint, blend);
             }
-            foreach (var grain in tray.SuctionGrains)
+            if (!hasTrayGrains)
             {
-                float remaining = 1 - grain.Age / grain.Duration;
-                Color32 tint = Palette[tray.DisplayColor(grain.Position, grain.Color)];
-                tint.a = (byte)Mathf.RoundToInt(255 * Mathf.Clamp01(remaining / .18f));
-                Vector2 trail = Vector2.ClampMagnitude(grain.Previous - grain.Position, 2.5f * SandTray.GridScale);
-                const int trailSteps = 2 * SandTray.GridScale;
-                for (int tap = trailSteps; tap >= 0; tap--)
-                {
-                    float along = (float)tap / trailSteps;
-                    Vector2 point = grain.Position + trail * along;
-                    int x = Mathf.FloorToInt(point.x), y = Mathf.FloorToInt(point.y);
-                    if (!SandTray.Playable(x, y)) continue;
-                    Color32 pixel = tint;
-                    pixel.a = (byte)(pixel.a * (1 - along * .56f));
-                    grainPixels[(SandTray.Size - 1 - y) * SandTray.Size + x] = pixel;
-                }
+                if (!hadTrayGrains) return;
+                Array.Clear(grainPixels, 0, grainPixels.Length);
             }
             grains.SetPixels32(grainPixels); grains.Apply(false, false);
+            hadTrayGrains = hasTrayGrains;
+        }
+
+        public void Render(SandTray tray, MandalaProgress progress, bool guides, float time,
+            bool updateSurface = true, float suctionInterpolation = 1)
+        {
+            if (Texture == null) return;
+            if (updateSurface || !surfaceReady) UploadSurface(tray, progress, time);
+            UploadPourGrains(tray);
             material.SetFloat("_GridSize", SandTray.Size);
             material.SetVector("_View", new Vector4(View.x, View.y, View.width, View.height));
             material.SetFloat("_Guides", guides ? 1 : 0);
@@ -189,48 +236,79 @@ namespace Mandala.Game
             try
             {
                 Graphics.Blit(colors, Texture, material, 0);
-                DrawRollingGrains(tray);
+                DrawMovingGrains(tray, suctionInterpolation);
             }
             finally { RenderTexture.active = previous; }
             NeedsRedraw = false;
             HighlightActive = highlight > 0;
         }
 
-        void DrawRollingGrains(SandTray tray)
+        internal static byte PourGrainOpacity(SandTray.Grain grain)
         {
-            if (tray.RollingGrains.Count == 0) return;
-            rollingVertices.Clear(); rollingUVs.Clear(); rollingColors.Clear(); rollingTriangles.Clear();
-            foreach (var grain in tray.RollingGrains)
-            {
-                // A small quad follows the actual fractional position. It is drawn
-                // directly at display resolution, so the simulation grid cannot snap it.
-                Vector2 uv = new Vector2(grain.Position.x, SandTray.Size - grain.Position.y) / SandTray.Size;
-                float grainRadius = .28f / SandTray.Size;
-                // Keep a subpixel grain rasterized between pixel centers, reducing
-                // its opacity to preserve coverage instead of making it look larger.
-                float radius = Mathf.Max(grainRadius, View.width / Texture.width);
-                if (uv.x + radius < View.xMin || uv.x - radius > View.xMax || uv.y + radius < View.yMin || uv.y - radius > View.yMax) continue;
-                int first = rollingVertices.Count;
-                Color32 tint = Palette[tray.DisplayColor(grain.Position, grain.Color)];
-                tint.a = (byte)Mathf.RoundToInt(255 * grainRadius * grainRadius / (radius * radius));
-                Corner(-1, -1); Corner(1, -1); Corner(1, 1); Corner(-1, 1);
-                rollingTriangles.Add(first); rollingTriangles.Add(first + 1); rollingTriangles.Add(first + 2);
-                rollingTriangles.Add(first); rollingTriangles.Add(first + 2); rollingTriangles.Add(first + 3);
+            // Choose one grain per ID pair so a landing cannot change which grains are visible.
+            uint hash = (grain.Id >> 1) * 0x9e3779b9u;
+            hash = (hash ^ (hash >> 16)) * 0x7feb352du;
+            if ((grain.Id & 1) != (hash & 1)) return 0;
+            float fade = Mathf.Clamp01(grain.Age / .03f) * Mathf.Clamp01(grain.Lift / (1.5f * SandTray.GridScale));
+            return (byte)Mathf.RoundToInt(153 * fade);
+        }
 
-                void Corner(float x, float y)
-                {
-                    Vector2 position = uv + new Vector2(x, y) * radius;
-                    rollingVertices.Add(new Vector3((position.x - View.x) / View.width * 2 - 1,
-                        (position.y - View.y) / View.height * 2 - 1, 0));
-                    rollingUVs.Add(new Vector2(x, y)); rollingColors.Add(tint);
-                }
+        void DrawMovingGrains(SandTray tray, float suctionInterpolation)
+        {
+            if (tray.RollingGrains.Count == 0 && tray.SuctionGrains.Count == 0) return;
+            movingVertices.Clear(); movingUVs.Clear(); movingColors.Clear(); movingTriangles.Clear();
+            float pixelSize = Mathf.Max(View.width / Texture.width, View.height / Texture.height);
+            foreach (var grain in tray.RollingGrains)
+                AddMovingGrain(grain.Position, Vector2.zero, .28f, pixelSize, Palette[tray.DisplayColor(grain.Position, grain.Color)]);
+            foreach (var grain in tray.SuctionGrains)
+            {
+                Vector2 position = Vector2.Lerp(grain.Previous, grain.Position, suctionInterpolation);
+                float remaining = (1 - grain.Age / grain.Duration) / .22f;
+                float fade = Mathf.SmoothStep(0, 1, remaining);
+                Vector2 trail = Vector2.ClampMagnitude(grain.Previous - grain.Position, MaxSuctionTrail) * fade;
+                Color32 tint = Palette[tray.DisplayColor(position, grain.Color)];
+                tint.a = (byte)Mathf.RoundToInt(218 * fade);
+                AddMovingGrain(position, trail, Mathf.Lerp(.16f, .38f, fade), pixelSize, tint);
             }
-            if (rollingVertices.Count == 0) return;
-            rollingMesh.Clear();
-            rollingMesh.SetVertices(rollingVertices); rollingMesh.SetUVs(0, rollingUVs);
-            rollingMesh.SetColors(rollingColors); rollingMesh.SetTriangles(rollingTriangles, 0);
+            if (movingVertices.Count == 0) return;
+            movingMesh.Clear();
+            movingMesh.SetVertices(movingVertices); movingMesh.SetUVs(0, movingUVs);
+            movingMesh.SetColors(movingColors); movingMesh.SetTriangles(movingTriangles, 0);
             Graphics.SetRenderTarget(Texture);
-            if (material.SetPass(1)) Graphics.DrawMeshNow(rollingMesh, Matrix4x4.identity);
+            if (material.SetPass(1)) Graphics.DrawMeshNow(movingMesh, Matrix4x4.identity);
+        }
+
+        void AddMovingGrain(Vector2 position, Vector2 trail, float grainRadius, float pixelSize, Color32 tint)
+        {
+            Vector2 tail = new Vector2(trail.x, -trail.y) / SandTray.Size;
+            Vector2 center = new Vector2(position.x, SandTray.Size - position.y) / SandTray.Size + tail * .5f;
+            float trailLength = tail.magnitude;
+            Vector2 direction = trailLength > 0 ? tail / trailLength : Vector2.up;
+            grainRadius /= SandTray.Size;
+            // Give subpixel grains enough coverage to rasterize, retaining their apparent area.
+            float radius = Mathf.Max(grainRadius, pixelSize);
+            float stretch = trailLength * .65f;
+            Vector2 along = direction * (radius + stretch);
+            Vector2 across = new Vector2(direction.y, -direction.x) * radius;
+            Vector2 extent = new Vector2(Mathf.Abs(across.x) + Mathf.Abs(along.x), Mathf.Abs(across.y) + Mathf.Abs(along.y));
+            if (center.x + extent.x < View.xMin || center.x - extent.x > View.xMax ||
+                center.y + extent.y < View.yMin || center.y - extent.y > View.yMax) return;
+            tint.a = (byte)Mathf.RoundToInt(tint.a * (grainRadius / radius) * ((grainRadius + stretch) / (radius + stretch)));
+            if (tint.a == 0) return;
+            Color32 tailTint = tint;
+            tailTint.a = (byte)Mathf.RoundToInt(tint.a * (1 - .55f * trailLength * SandTray.Size / MaxSuctionTrail));
+            int first = movingVertices.Count;
+            Corner(-1, -1, tint); Corner(1, -1, tint); Corner(1, 1, tailTint); Corner(-1, 1, tailTint);
+            movingTriangles.Add(first); movingTriangles.Add(first + 1); movingTriangles.Add(first + 2);
+            movingTriangles.Add(first); movingTriangles.Add(first + 2); movingTriangles.Add(first + 3);
+
+            void Corner(float x, float y, Color32 color)
+            {
+                Vector2 corner = center + across * x + along * y;
+                movingVertices.Add(new Vector3((corner.x - View.x) / View.width * 2 - 1,
+                    (corner.y - View.y) / View.height * 2 - 1, 0));
+                movingUVs.Add(new Vector2(x, y)); movingColors.Add(color);
+            }
         }
 
         void PlotPourGrain(int x, int y, Color32 tint, float weight)
@@ -248,10 +326,11 @@ namespace Mandala.Game
             disposed = true;
             if (Texture != null) { Texture.Release(); DestroyResource(Texture); }
             DestroyResource(material);
-            DestroyResource(rollingMesh);
+            DestroyResource(movingMesh);
             DestroyResource(colors);
             DestroyResource(feedback);
             DestroyResource(grains);
+            DestroyResource(grainDetail);
         }
 
         static void DestroyResource(UnityEngine.Object resource)

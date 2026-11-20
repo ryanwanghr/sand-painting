@@ -30,17 +30,40 @@ namespace Mandala.Game
             if (File.Exists(path)) File.Replace(temporary, path, path + ".bak");
             else File.Move(temporary, path);
         }
+        public static bool IsFinished(string path)
+        {
+            try
+            {
+                using var file = File.OpenRead(path);
+                using var zip = new GZipStream(file, CompressionMode.Decompress);
+                using var reader = new BinaryReader(zip);
+                ReadHeader(reader, out _, out _);
+                reader.ReadBoolean();
+                return reader.ReadBoolean();
+            }
+            catch (IOException) { return false; }
+            catch (InvalidDataException) { return false; }
+        }
+
+        static void ReadHeader(BinaryReader reader, out int version, out int size)
+        {
+            int magic = reader.ReadInt32();
+            version = reader.ReadInt32();
+            size = reader.ReadInt32();
+            int levels = reader.ReadInt32();
+            if (magic != Magic || version < 1 || version > Version ||
+                (size != SandTray.Size && size != SandTray.ReferenceSize) || levels != SandTray.Levels)
+                throw new InvalidDataException("Unsupported mandala save.");
+        }
+
         public static SandTray.Snapshot Read(string path)
         {
             using (var file = File.OpenRead(path))
             using (var zip = new GZipStream(file, CompressionMode.Decompress))
             using (var reader = new BinaryReader(zip))
             {
-                int magic = reader.ReadInt32(), version = reader.ReadInt32();
-                int size = reader.ReadInt32(), levels = reader.ReadInt32();
-                if (magic != Magic || version < 1 || version > Version ||
-                    (size != SandTray.Size && size != SandTray.ReferenceSize) || levels != SandTray.Levels)
-                    throw new InvalidDataException("Unsupported mandala save.");
+                ReadHeader(reader, out int version, out int size);
+                int levels = SandTray.Levels;
                 int count = size * size;
                 var state = new SandTray.Snapshot { Protection = reader.ReadBoolean(), HasWon = reader.ReadBoolean(),
                     Heights = new byte[count], Layers = new byte[count * levels], Completed = new bool[count] };

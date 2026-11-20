@@ -3,13 +3,13 @@
 ## Completed section colors
 
 Completing a section requires at least 98% of its cells to have three or more
-settled layers and the guide color on top. Completion assists its color
-and adds an invisible lip around its perimeter, including edges shared with
-other colors. Adjoining sections share
-one lip per grid edge. The lip holds the bottom three layers, and higher sand
-can spill over. During painting, the vacuum preserves completed sections while cleaning
-unfinished sections and gaps. A rolling grain's current position determines
-whether the vacuum can pick it up.
+settled layers and the guide color on top. Completion assists its color.
+Every section starts with an invisible lip around its perimeter, including edges
+shared with other colors. Adjoining sections share one lip per grid edge. The
+lip holds the bottom three layers, and higher sand can spill over. During
+painting, the vacuum preserves settled sand in completed sections while
+cleaning unfinished sections and gaps. It can also pick up rolling sand within
+reach, including inside completed sections.
 
 Occupied cells in a completed section display its guide color, including moving
 grains at their current position. Grains recover their original appearance in a
@@ -27,7 +27,7 @@ opens only the segments under its path, so sand can spill there while the rest
 of the picture stays supported. Undo restores the lip state from before the
 stroke. Undoing **Let go** also restores the original pigments and assistance.
 Version 3 saves record the intact segments. Painting saves rebuild lips around
-completed sections when loaded. Released saves retain their saved openings.
+all sections when loaded. Released saves retain their saved openings.
 
 **Tools > Mandala > Run Completion Color Checks** covers temporary coloring,
 earned completion, coverage, movement inside colored areas, release
@@ -110,12 +110,12 @@ completion rules, save format, and undo are unchanged by this visual update.
 
 ## Fuller pouring
 
-Pouring now deposits a denser core directly beneath the tip with a lighter fringe.
-The nozzle now has a 12-cell radius, down from 16, and a matching narrower brass
-tip. Its stream delivers about 50% more sand per second than the previous pour.
-Flow is normalized by footprint area, so narrowing the nozzle concentrates the
-stream without reducing its total volume. Contact is integrated along moving strokes so fast
-drags keep a continuous trail and comparable volume at different sampling rates.
+Pouring deposits a dense core directly beneath the brass tip with a lighter fringe.
+The nozzle radius is `4 * GridScale`, down from `12 * GridScale`, and the incoming
+flow is 50% higher. Flow is normalized by footprint area. A held pour can reach
+the stack limit near the tip while sand continues to settle outward. Contact is
+integrated along moving strokes so fast drags keep a continuous trail and
+comparable volume at different sampling rates.
 Holding the tip builds a pile instead of distributing every new grain into the
 lowest cells across the whole footprint. Falling grains, original colors,
 completed-section coloring, stack limits, saves, and undo continue to apply. Settling can

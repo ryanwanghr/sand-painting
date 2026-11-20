@@ -188,13 +188,13 @@ namespace Mandala.Game.Editor
             const int offset = Center - 220, edgeX = 230 + offset;
             int Cell(int x, int y) => (y + offset) * SandTray.Size + x;
             var tray = new SandTray(42);
+            Require(Array.Exists(tray.Capture().Lips, edges => edges != 0), "A new empty tray must start with section lips.");
             Array.Fill(tray.Guide, (sbyte)-1);
             var section = new List<int>();
             for (int y = 200; y < 240; y++) for (int x = 210 + offset; x < edgeX; x++)
             {
                 int cell = Cell(x, y);
                 tray.Guide[cell] = 0; section.Add(cell);
-                for (int layer = 0; layer < 3; layer++) tray.Add(cell, 0);
             }
             int Boundary(int y) => Cell(edgeX - 1, y);
             int Gap(int y) => Cell(edgeX, y);
@@ -204,9 +204,14 @@ namespace Mandala.Game.Editor
                 for (int frame = 0; frame < 60; frame++) tray.Step(1f / 60);
             }
 
+            tray.Clear();
+            Require(EdgeAt(tray.Capture(), 205) && EdgeAt(tray.Capture(), 230), "Clearing must restore the lips around an empty section.");
+            foreach (int cell in section) for (int layer = 0; layer < 3; layer++) tray.Add(cell, 0);
+            var unfinished = tray.Capture();
+            Settle(); SameMaterial(unfinished, tray.Capture());
+
             tray.CompleteSection(section);
             var low = tray.Capture();
-            Require(EdgeAt(low, 205) && EdgeAt(low, 230), "Completion must build individual gap edges.");
             tray.Add(Gap(208), 4);
             var tip = new Vector2(edgeX, 208.5f + offset);
             Require(tray.Apply(SandTool.Vacuum, tip, tip, 1.2f, 0, .1f) == 1, "Painting vacuum must still clean against a lip.");
@@ -251,7 +256,7 @@ namespace Mandala.Game.Editor
                     "A released tray must preserve both broken and intact edges across saving and reloading.");
                 low.Lips = null;
                 MandalaSave.Write(path, low); tray.Restore(MandalaSave.Read(path));
-                Require(EdgeAt(tray.Capture(), 230), "A legacy painting must rebuild edges around earned sections.");
+                Require(EdgeAt(tray.Capture(), 230), "A legacy painting must rebuild its guide edges.");
                 low.Protection = false;
                 MandalaSave.Write(path, low); tray.Restore(MandalaSave.Read(path));
                 Require(!EdgeAt(tray.Capture(), 230), "A legacy released painting must stay open.");
@@ -261,26 +266,27 @@ namespace Mandala.Game.Editor
                 foreach (string suffix in new[] { "", ".tmp", ".bak" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
             }
 
-            tray.Clear();
             var adjacent = new List<int>();
             for (int y = 200; y < 240; y++)
             {
                 int cell = Gap(y);
                 tray.Guide[cell] = 1; adjacent.Add(cell);
             }
+            tray.Clear();
             foreach (int cell in section) for (int layer = 0; layer < 3; layer++) tray.Add(cell, 0);
-            tray.CompleteSection(section);
             Settle();
             var firstColor = tray.Capture();
             Require(EdgeAt(firstColor, 210) && tray.Heights[Gap(210)] == 0,
-                "The completed section must hold low sand back from an unfinished neighboring color.");
+                "The shared lip must hold low sand before either section completes.");
             Require(firstColor.Lips[Cell(edgeX - 2, 210)] == 0,
                 "Adjacent cells inside the same section must stay open to one another.");
 
             firstColor.Lips[Boundary(210)] = 0;
             tray.Restore(firstColor);
-            Require(EdgeAt(tray.Capture(), 210), "Older painting saves must gain lips at shared color edges.");
+            Require(EdgeAt(tray.Capture(), 210) && !tray.Completed[Boundary(210)] && !tray.Completed[Gap(210)],
+                "Older painting saves must gain lips between unfinished sections.");
 
+            tray.CompleteSection(section);
             tray.CompleteSection(adjacent);
             tray.ReleaseColors();
             tip = new Vector2(edgeX, 210.5f + offset);
@@ -291,7 +297,7 @@ namespace Mandala.Game.Editor
             tray.Restore(opened); Settle();
             Require(tray.Heights[Gap(210)] > 0,
                 "Opening the shared edge must allow settling into the neighboring color after reload.");
-            return "Section lip checks passed: shared color edges, movement within a section, painting cleanup, tall-pile overflow, intact Let go, local sweep and vacuum openings, settling and mass, undo, saves and legacy migration.";
+            return "Section lip checks passed: walls on empty trays, shared edges before completion, movement within a section, painting cleanup, tall-pile overflow, intact Let go, local sweep and vacuum openings, settling and mass, undo, saves and legacy migration.";
         }
 
         [MenuItem("Tools/Mandala/Run Completion Color Rendering Checks")]

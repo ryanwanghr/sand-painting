@@ -5,6 +5,7 @@ Shader "Mandala/Surface"
         _MainTex ("Sand color and height", 2D) = "white" {}
         _FeedbackTex ("Section feedback", 2D) = "black" {}
         _GrainsTex ("Airborne grains", 2D) = "black" {}
+        _GrainDetail ("Mobile grain detail", 2D) = "gray" {}
         _TrayColor ("Tray color", Vector) = (.9019608, .8627451, .7764706, 1)
     }
     SubShader
@@ -17,14 +18,17 @@ Shader "Mandala/Surface"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.0
+            #pragma multi_compile_local_fragment _ MANDALA_MOBILE_SURFACE
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             TEXTURE2D(_MainTex); SAMPLER(sampler_MainTex);
             TEXTURE2D(_FeedbackTex); SAMPLER(sampler_FeedbackTex);
             TEXTURE2D(_GrainsTex); SAMPLER(sampler_GrainsTex);
+            TEXTURE2D(_GrainDetail); SAMPLER(sampler_GrainDetail);
             CBUFFER_START(UnityPerMaterial)
                 float4 _View;
                 float4 _TrayColor;
+                float4 _GrainDetail_TexelSize;
                 float _Guides, _GridSize;
                 float _HighlightColor, _Highlight;
             CBUFFER_END
@@ -74,6 +78,10 @@ Shader "Mandala/Surface"
 
             void sampleSurface(float2 uv, out float4 sand, out float4 feedback)
             {
+                #if defined(MANDALA_MOBILE_SURFACE)
+                sand = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv);
+                feedback = SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, uv);
+                #else
                 // Reconstruct a smooth contour from cell centers. Cubic B-spline weights
                 // stay positive, so color boundaries cannot ring or reveal pale seams.
                 // Pairing weights uses four bilinear taps instead of sixteen point taps.
@@ -94,8 +102,10 @@ Shader "Mandala/Surface"
                          + SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, float2(p1.x, p0.y)) * b.x * a.y
                          + SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, float2(p0.x, p1.y)) * a.x * b.y
                          + SAMPLE_TEXTURE2D(_FeedbackTex, sampler_FeedbackTex, p1) * b.x * b.y;
+                #endif
             }
 
+            #if !defined(MANDALA_MOBILE_SURFACE)
             float3 grainPigment(float2 center, float2 seed, float3 average)
             {
                 // Draw one cell from the same positive B-spline distribution used for
@@ -224,6 +234,7 @@ Shader "Mandala/Surface"
                 return float4(lerp(pigment, grainColor, detail * (1 - solid)),
                     lerp(lerp(coverage, grains, detail), 1, solid));
             }
+            #endif
 
             void guide(inout float3 color, float2 uv, float distance, float empty, float colorIndex)
             {
@@ -256,15 +267,21 @@ Shader "Mandala/Surface"
             {
                 float2 uv = _View.xy + input.uv * _View.zw;
                 float2 sandUV = (floor(uv * _GridSize) + .5) / _GridSize;
-                float2 p = (uv - .5) / .43;
-                float r = length(p), angle = atan2(p.y, p.x);
-                float petal = cos(angle * 8);
                 float4 sand, feedback;
                 sampleSurface(uv, sand, feedback);
                 float occupied = feedback.b;
                 // Height describes occupied sand only. Empty neighbors reduce contour
                 // coverage, never the deposit's density or its choice of grain rendering.
                 float height = sand.a * 24 / max(occupied, .001);
+                float3 pigment = sand.rgb / max(occupied, .001);
+                #if defined(MANDALA_MOBILE_SURFACE)
+                // Tray-anchored, mipmapped grain tones replace the per-pixel neighbor searches.
+                float grainTone = SAMPLE_TEXTURE2D(_GrainDetail, sampler_GrainDetail,
+                    uv * (_GridSize * _GrainDetail_TexelSize.x)).r - .5;
+                float3 paper = ink(saturate(_TrayColor.rgb + grainTone * .009));
+                float coverage = occupied * lerp(.3, 1, smoothstep(1, 3, height));
+                float3 color = lerp(paper, pigment * (1 + grainTone * .10), coverage);
+                #else
                 // Keep the reconstructed outline crisp at display resolution. A small,
                 // continuous grain-scale offset breaks up the contour without cell-shaped cuts.
                 float2 edgeGrid = uv * 1320, edgeCell = floor(edgeGrid), edgeT = frac(edgeGrid);
@@ -278,19 +295,22 @@ Shader "Mandala/Surface"
                 float paperNoise = (grainHash(floor(uv * 1777) + 47.1) - .5) * .009;
                 // Cleared tray stays clean; height-based shading is already in the sand pigment.
                 float3 paper = ink(saturate(_TrayColor.rgb + paperNoise));
-                float3 pigment = sand.rgb / max(occupied, .001);
                 float4 granular = sandGrains(uv, height, pigment, contour, edgeCoverage);
                 granular.a *= edgeCoverage;
                 float3 color = lerp(paper, granular.rgb, granular.a);
+                #endif
 
-                float inner = max(.20 - r, r - (.49 + .13 * petal));
-                float gold = min(r - .12, max(inner, (petal - .25) * .04));
-                float terracotta = min(max(.12 - r, r - .17), max(inner, (.25 - petal) * .04));
-                float lagoon = max(.65 - r, r - (.76 - .12 * petal));
-                float ivory = max(.88 - r, r - .92);
-                float indigo = max(max(.95 - r, r - 1), (-.25 - cos(angle * 24)) * .015);
                 if (_Guides > .5)
                 {
+                    float2 p = (uv - .5) / .43;
+                    float r = length(p), angle = atan2(p.y, p.x);
+                    float petal = cos(angle * 8);
+                    float inner = max(.20 - r, r - (.49 + .13 * petal));
+                    float gold = min(r - .12, max(inner, (petal - .25) * .04));
+                    float terracotta = min(max(.12 - r, r - .17), max(inner, (.25 - petal) * .04));
+                    float lagoon = max(.65 - r, r - (.76 - .12 * petal));
+                    float ivory = max(.88 - r, r - .92);
+                    float indigo = max(max(.95 - r, r - 1), (-.25 - cos(angle * 24)) * .015);
                     guide(color, uv, gold, 1 - occupied, 0);
                     guide(color, uv, terracotta, 1 - occupied, 1);
                     guide(color, uv, lagoon, 1 - occupied, 2);
@@ -314,28 +334,41 @@ Shader "Mandala/Surface"
         {
             Blend SrcAlpha OneMinusSrcAlpha, One OneMinusSrcAlpha
             HLSLPROGRAM
-            #pragma vertex vertRolling
-            #pragma fragment fragRolling
+            #pragma vertex vertMovingGrain
+            #pragma fragment fragMovingGrain
             #pragma target 3.0
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct RollingAttributes { float4 position : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };
-            struct RollingVaryings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };
-            RollingVaryings vertRolling(RollingAttributes input)
+            float4 _View;
+
+            struct GrainAttributes { float4 position : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };
+            struct GrainVaryings
             {
-                RollingVaryings output;
+                float4 positionCS : SV_POSITION;
+                float2 uv : TEXCOORD0;
+                float2 trayUV : TEXCOORD1;
+                float4 color : COLOR;
+            };
+            GrainVaryings vertMovingGrain(GrainAttributes input)
+            {
+                GrainVaryings output;
                 output.positionCS = float4(input.position.xy, 0, 1);
+                output.trayUV = _View.xy + (input.position.xy * .5 + .5) * _View.zw;
                 output.uv = input.uv; output.color = input.color;
                 #if !defined(UNITY_COLORSPACE_GAMMA)
                     output.color.rgb = FastSRGBToLinear(output.color.rgb);
                 #endif
                 return output;
             }
-            half4 fragRolling(RollingVaryings input) : SV_Target
+            half4 fragMovingGrain(GrainVaryings input) : SV_Target
             {
                 float distance = length(input.uv * float2(1, 1.12));
                 float aa = max(fwidth(distance), .02);
                 float alpha = 1 - smoothstep(.76 - aa * .5, .76 + aa * .5, distance);
+                // A curved suction path can carry a grain across the tray rim.
+                float rimDistance = length(input.trayUV - .5) - .4932;
+                float rimAA = max(fwidth(rimDistance), .00001);
+                alpha *= 1 - smoothstep(-rimAA * .5, rimAA * .5, rimDistance);
                 float light = 1 + dot(input.uv, float2(-.10, .10));
                 return half4(input.color.rgb * light, alpha * input.color.a);
             }

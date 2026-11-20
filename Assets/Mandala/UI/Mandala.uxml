@@ -1,6 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Template name="Studio" src="SandStudio.uxml" />
     <ui:Style src="Mandala.uss" />
-    <ui:VisualElement class="screen" picking-mode="Ignore">
+    <ui:Instance template="Studio" name="studioScreen" class="studio-container" />
+    <ui:VisualElement name="paintingScreen" class="screen hidden" picking-mode="Ignore">
         <ui:Image name="water" class="water" picking-mode="Ignore" />
         <ui:VisualElement name="traySpace" class="tray-space">
             <ui:Image name="tray" class="tray" picking-mode="Ignore" />
@@ -19,6 +21,7 @@
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:Button name="release" text="Let go" class="release floating hidden" />
+            <ui:Button name="studioBack" text="Studio" class="studio-back floating" />
             <ui:VisualElement name="palette" class="row palette floating" picking-mode="Ignore">
                 <ui:Button name="color0" tooltip="Marigold" class="swatch marigold" />
                 <ui:Button name="color1" tooltip="Terracotta" class="swatch terracotta" />
@@ -42,6 +45,7 @@
             <ui:VisualElement name="settings" class="settings floating hidden">
                 <ui:Button name="sound" text="Sound on" />
                 <ui:Button name="guides" text="Guides on" />
+                <ui:Button name="waterAnimation" text="Animated water" />
                 <ui:Button name="clear" text="Clear tray" />
             </ui:VisualElement>
             <ui:Button name="menu" text="Menu" class="menu floating" />

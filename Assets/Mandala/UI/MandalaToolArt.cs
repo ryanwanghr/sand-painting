@@ -10,7 +10,8 @@ namespace Mandala.Game
             float angle, float phase, float contact, Color sand, float opacity = 1, float flex = 0,
             bool fadeTip = false)
         {
-            var art = new Illustration(painter, origin, scale, angle, opacity, fadeTip);
+            float tipOpacity = tool == SandTool.Pour ? Mathf.Lerp(.2f, .75f, contact) : .2f;
+            var art = new Illustration(painter, origin, scale, angle, opacity, fadeTip, tipOpacity);
             if (tool == SandTool.Pour) art.Pourer(phase, contact, sand);
             else if (tool == SandTool.Vacuum) art.Vacuum();
             else if (tool == SandTool.Rake) art.Rake(phase, contact);
@@ -21,7 +22,7 @@ namespace Mandala.Game
         {
             readonly Painter2D p;
             readonly Vector2 origin;
-            readonly float scale, sine, cosine, opacity;
+            readonly float scale, sine, cosine, opacity, tipOpacity;
             readonly bool fadeTip;
             static readonly Color Outline = new Color32(73, 77, 57, 180);
             static readonly Color Brass = new Color32(196, 162, 96, 255);
@@ -29,10 +30,10 @@ namespace Mandala.Game
             static readonly Color Wood = new Color32(169, 124, 78, 255);
             static readonly Color Cream = new Color32(231, 215, 173, 255);
 
-            public Illustration(Painter2D painter, Vector2 origin, float scale, float angle, float opacity, bool fadeTip)
+            public Illustration(Painter2D painter, Vector2 origin, float scale, float angle, float opacity, bool fadeTip, float tipOpacity)
             {
                 p = painter; this.origin = origin; this.scale = scale;
-                this.opacity = opacity; this.fadeTip = fadeTip;
+                this.opacity = opacity; this.fadeTip = fadeTip; this.tipOpacity = tipOpacity;
                 sine = Mathf.Sin(angle * Mathf.Deg2Rad); cosine = Mathf.Cos(angle * Mathf.Deg2Rad);
                 p.lineCap = LineCap.Round; p.lineJoin = LineJoin.Round;
             }
@@ -44,7 +45,7 @@ namespace Mandala.Game
                 var gradient = new Gradient();
                 gradient.SetKeys(
                     new[] { new GradientColorKey(c, 0), new GradientColorKey(c, 1) },
-                    new[] { new GradientAlphaKey(c.a * opacity * .2f, 0), new GradientAlphaKey(c.a * opacity, 1) });
+                    new[] { new GradientAlphaKey(c.a * opacity * tipOpacity, 0), new GradientAlphaKey(c.a * opacity, 1) });
                 return FillGradient.MakeLinearGradient(gradient, Point(0, 0), Point(0, 56), AddressMode.Clamp);
             }
             void ColorFill(Color c)
@@ -86,8 +87,9 @@ namespace Mandala.Game
 
             public void Pourer(float phase, float contact, Color sand)
             {
-                Begin(); Move(-1.35f, 3); Line(1.35f, 3); Line(14, 56);
-                Curve(14, 62, -14, 62, -14, 56); Line(-1.35f, 3); Fill(Color.Lerp(Brass, sand, .15f));
+                Begin(); Move(-1.65f, 0); Line(1.65f, 0); Line(14, 56);
+                Curve(14, 62, -14, 62, -14, 56); Line(-1.65f, 0); Fill(Color.Lerp(Brass, sand, .15f));
+                Ellipse(0, 0, 1.65f, .85f, new Color32(94, 72, 43, 255));
                 float rub = Mathf.Sin(phase * 32) * contact;
                 Begin(); Move(-14, 33 + rub); Line(19, 39 + rub); Stroke(Wood, 2.2f);
             }

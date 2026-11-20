@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using UnityEngine;
@@ -117,23 +118,25 @@ namespace Mandala.Game.Editor
             var saved = tray.Capture();
             float core = 0, fringe = 0; int coreCells = 0, fringeCells = 0;
             float radiusSq = SandTray.PourRadius * SandTray.PourRadius;
-            int extent = Mathf.CeilToInt(SandTray.PourRadius);
+            int extent = Mathf.CeilToInt(2 * SandTray.PourRadius);
             for (int y = Center - extent; y <= Center + extent; y++) for (int x = Center - extent; x <= Center + extent; x++)
             {
                 float distance = (new Vector2(x + .5f, y + .5f) - center).sqrMagnitude;
                 int height = saved.Heights[y * SandTray.Size + x];
                 if (distance < radiusSq * .25f) { core += height; coreCells++; }
-                if (distance > radiusSq * .5625f && distance < radiusSq) { fringe += height; fringeCells++; }
+                if (distance > radiusSq && distance < 4 * radiusSq) { fringe += height; fringeCells++; }
             }
             core /= coreCells; fringe /= fringeCells;
             Require(core >= 3 && core > fringe * 1.8f && fringe > 0,
-                "A one-second pour must build a substantial core with a lighter, nonempty fringe.");
+                "A one-second pour must build a substantial core and spread a lighter fringe beyond the nozzle.");
 
-            var longer = Pour(60, 2, center, center);
-            float flowGain = Total(longer) / (Mathf.PI * 16 * 16 * 3 * 2 * SandTray.AreaScale);
-            Require(flowGain > 1.4f && flowGain < 1.6f, "The smaller nozzle must pour about 1.5 times as much sand as the previous stream.");
-            var wider = Pour(60, 2, center, center, 16 * Scale);
-            Require(Mathf.Abs(Total(wider) - Total(longer)) < Total(wider) * .05f,
+            // Use a moving stroke to measure flow before the small footprint reaches stack capacity.
+            Vector2 start = Point(120, 220), end = Point(320, 220);
+            var movingPour = Pour(60, 2, start, end);
+            float flowGain = Total(movingPour) / (Mathf.PI * 16 * 16 * 4.5f * 2 * SandTray.AreaScale);
+            Require(flowGain > 1.4f && flowGain < 1.6f, "A moving stroke must pour about 1.5 times as much sand as the previous stream.");
+            var wider = Pour(60, 2, start, end, 16 * Scale);
+            Require(Mathf.Abs(Total(wider) - Total(movingPour)) < Total(wider) * .05f,
                 "Changing nozzle area must preserve the stream's total flow.");
 
             int savedMass = 0;
@@ -145,7 +148,6 @@ namespace Mandala.Game.Editor
             tray.Clear(); tray.Restore(saved);
             Require(tray.Mass() == savedMass && tray.Grains.Count == 0, "Undo must restore the complete deposited pile.");
 
-            Vector2 start = Point(120, 220), end = Point(320, 220);
             var coarse = Pour(30, 2, start, end); var fine = Pour(120, 2, start, end);
             Require(Mathf.Abs(Total(coarse) - Total(fine)) < Total(fine) * .05f,
                 "Moving pour volume must stay consistent across stroke sampling rates.");
@@ -161,9 +163,9 @@ namespace Mandala.Game.Editor
 
             tray.Clear();
             for (int i = 0; i < SandTray.CellCount; i++) tray.Completed[i] = true;
-            Require(tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 4, 1) > 0 && tray.Grains.Count > 0,
+            Require(tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 4, 1f / 60) > 0 && tray.Grains.Count > 0,
                 "Completed cells must accept wrong-color sand without changing its stored pigment.");
-            Require(tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 0, 1) > 0,
+            Require(tray.Apply(SandTool.Pour, center, center, SandTray.PourRadius, 0, 1f / 60) > 0,
                 "Completed cells must also accept their matching pour color.");
 
             tray.Clear(); tray.Protection = false;
@@ -293,7 +295,7 @@ namespace Mandala.Game.Editor
             tray.Guide[unfinished] = 4; tray.Add(unfinished, 0);
             tray.Apply(SandTool.Vacuum, center, center, 32 * Scale, 0, 1);
             Require(tray.Heights[cell] == 2 && tray.Top(cell) == 2 && tray.Layers[cell * SandTray.Levels] == 1,
-                "Painting vacuum must preserve every layer inside a completed section, including its original wrong pigments.");
+                "Painting vacuum must preserve every settled layer inside a completed section, including its original wrong pigments.");
             Require(tray.Heights[gap] == 0 && tray.Heights[unfinished] == 0 && tray.SuctionGrains.Count == 2,
                 "The same vacuum stroke must still clean gaps and unfinished sections beside a completed edge.");
             var painting = tray.Capture();
@@ -308,20 +310,19 @@ namespace Mandala.Game.Editor
             int source = Center * SandTray.Size + Center;
             for (int h = 0; h < 11; h++) tray.Add(source, 0);
             tray.Add(source, 1); tray.Step(.005f);
-            Require(tray.RollingGrains.Count == 1, "The boundary fixture must contain a real reserved rolling transfer.");
+            Require(tray.RollingGrains.Count == 1, "The hill must have an outgoing rolling grain.");
             var rolling = tray.RollingGrains[0];
-            tray.Completed[source] = true;
-            int rollingMass = tray.Mass();
-            Require(tray.Apply(SandTool.Vacuum, rolling.Position, rolling.Position, .2f, 0, .05f) == 0
-                && tray.RollingGrains.Count == 1 && tray.Mass() == rollingMass,
-                "A rolling grain currently inside a completed section must be preserved even if its destination is unfinished.");
-            tray.Completed[source] = false; tray.Completed[rolling.Target] = true;
+            tray.CompleteSection(new List<int> { source, rolling.Target });
+            int rollingMass = tray.Mass(), settledHeight = tray.Heights[source];
             int removedRolling = tray.Apply(SandTool.Vacuum, rolling.Position, rolling.Position, .2f, 0, .05f);
-            Require(removedRolling > 0 && tray.RollingGrains.Count == 0 && tray.Mass() == rollingMass - removedRolling,
-                "A rolling grain outside a completed section must remain removable even when heading into one.");
+            Require(removedRolling == 1 && tray.RollingGrains.Count == 0 && tray.Mass() == rollingMass - 1
+                && tray.Heights[source] == settledHeight,
+                "Vacuuming a completed hill must remove its rolling grain and preserve its settled layers.");
+            Require(tray.SuctionGrains.Count == 1 && tray.SuctionGrains[0].Color == rolling.Color,
+                "A rolling grain removed from a completed area must enter the suction animation with its original pigment.");
             for (int frame = 0; frame < 60; frame++) tray.Step(1f / 60);
-            Require(tray.Mass() == rollingMass - removedRolling, "Vacuuming a boundary transfer must release its landing reservation.");
-            string result = "Vacuum animation checks passed: motion, original colors, bounded particles, release tail, saves, undo, completed-section protection, nearby cleanup, unrestricted release, rolling-position boundaries and reservations.";
+            Require(tray.Mass() == rollingMass - 1, "A vacuumed rolling grain must not land after suction.");
+            string result = "Vacuum animation checks passed: motion, original colors, bounded particles, release tail, saves, undo, settled-sand protection, nearby cleanup, unrestricted release, and rolling pickup inside completed sections.";
             Debug.Log(result);
             return result;
         }

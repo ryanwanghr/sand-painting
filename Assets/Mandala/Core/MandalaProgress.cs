@@ -72,7 +72,8 @@ namespace Mandala.Game
             }
         }
 
-        public float ColorProgress(int color) => (float)colorCredited[color] / colorTargets[color];
+        public bool UsesColor(int color) => colorTargets[color] > 0;
+        public float ColorProgress(int color) => UsesColor(color) ? (float)colorCredited[color] / colorTargets[color] : 0;
 
         internal static void CollectSection(sbyte[] guide, int size, int[] regions, int start, int id, List<int> cells)
         {

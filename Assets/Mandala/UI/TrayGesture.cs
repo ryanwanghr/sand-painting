@@ -145,9 +145,11 @@ namespace Mandala.Game
         void Refresh()
         {
             Vector2 extents = fittedExtents / Zoom;
-            Vector2 half = extents * .5f, limit = Vector2.Min(half, Vector2.one * .5f);
-            center.x = Mathf.Clamp(center.x, limit.x, 1 - limit.x);
-            center.y = Mathf.Clamp(center.y, limit.y, 1 - limit.y);
+            Vector2 half = extents * .5f;
+            // Pan within the fitted view so the water is reachable as well as the tray.
+            Vector2 panLimit = (fittedExtents - extents) * .5f;
+            center.x = Mathf.Clamp(center.x, .5f - panLimit.x, .5f + panLimit.x);
+            center.y = Mathf.Clamp(center.y, .5f - panLimit.y, .5f + panLimit.y);
             View = new Rect(center.x - half.x, 1 - center.y - half.y, extents.x, extents.y);
         }
     }

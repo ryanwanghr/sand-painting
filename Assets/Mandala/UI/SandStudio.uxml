@@ -1,0 +1,31 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="SandStudio.uss" />
+    <ui:VisualElement name="studio" class="studio">
+        <ui:VisualElement name="studioSafe" class="studio-safe">
+            <ui:VisualElement class="studio-header">
+                <ui:Label text="Sand Painting" class="studio-brand" />
+                <ui:Button name="studioSettings" text="Settings" class="studio-settings-button" />
+            </ui:VisualElement>
+            <ui:Label name="studioStatus" class="studio-status hidden" />
+            <ui:ScrollView name="studioScroll" class="studio-scroll" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Hidden">
+                <ui:VisualElement name="studioContent" class="studio-content" />
+            </ui:ScrollView>
+            <ui:VisualElement class="studio-nav">
+                <ui:VisualElement class="studio-tabs">
+                    <ui:Button name="mainTab" text="Main" class="studio-tab" />
+                    <ui:Button name="dailyTab" text="Daily" class="studio-tab" />
+                    <ui:Button name="worksTab" text="My Works" class="studio-tab" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="studioSettingsOverlay" class="studio-overlay hidden">
+                <ui:VisualElement class="studio-dialog">
+                    <ui:Label text="Settings" class="studio-section-title" />
+                    <ui:Button name="studioSound" class="studio-action" />
+                    <ui:Button name="studioGuides" class="studio-action" />
+                    <ui:Button name="studioWaterAnimation" class="studio-action" />
+                    <ui:Button name="studioSettingsDone" text="Done" class="studio-action studio-primary" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

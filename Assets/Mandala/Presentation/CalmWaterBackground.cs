@@ -8,7 +8,7 @@ namespace Mandala.Game
     {
         const int MaxTextureEdge = 1024;
         const int FramesPerSecond = 30;
-        static readonly int Aspect = Shader.PropertyToID("_WaterAspect");
+        static readonly int WaterScale = Shader.PropertyToID("_WaterScale");
         static readonly int TrayView = Shader.PropertyToID("_TrayView");
         static readonly int WaterTime = Shader.PropertyToID("_WaterTime");
 
@@ -16,7 +16,10 @@ namespace Mandala.Game
         readonly Material material;
         RenderTexture texture;
         Rect lastView;
+        float lastZoom, lastTime, animationTime;
         int lastFrame = -1;
+
+        public bool Animate { get; set; } = true;
 
         public CalmWaterBackground(Image image)
         {
@@ -24,13 +27,18 @@ namespace Mandala.Game
             image.scaleMode = ScaleMode.StretchToFill;
             var shader = Resources.Load<Shader>("MandalaCalmWater");
             if (shader != null && shader.isSupported)
+            {
                 material = new Material(shader) { name = "Mandala calm water", hideFlags = HideFlags.HideAndDontSave };
+                material.SetFloat(WaterTime, 0);
+            }
         }
 
-        public void Render(float time, Rect trayView)
+        public void Render(float time, Rect trayView, float zoom)
         {
             if (material == null || Screen.width < 1 || Screen.height < 1) return;
-            int frame = Mathf.FloorToInt(time * FramesPerSecond);
+            if (Animate) animationTime += time - lastTime;
+            lastTime = time;
+            int frame = Mathf.FloorToInt(animationTime * FramesPerSecond);
             float scale = Mathf.Min(1, (float)MaxTextureEdge / Mathf.Max(Screen.width, Screen.height));
             int width = Mathf.Max(1, Mathf.RoundToInt(Screen.width * scale));
             int height = Mathf.Max(1, Mathf.RoundToInt(Screen.height * scale));
@@ -45,16 +53,18 @@ namespace Mandala.Game
                 image.image = texture;
                 lastFrame = -1;
             }
-            if (frame == lastFrame && trayView == lastView) return;
+            if (frame == lastFrame && trayView == lastView && zoom == lastZoom) return;
 
-            material.SetFloat(Aspect, (float)Screen.width / Screen.height);
+            // Keep the wave spacing at the fitted view's scale when the tray zooms.
+            material.SetFloat(WaterScale, 1f / (Mathf.Min(trayView.width, trayView.height) * zoom));
             material.SetVector(TrayView, new Vector4(trayView.x, trayView.y, trayView.width, trayView.height));
-            material.SetFloat(WaterTime, time);
+            if (Animate) material.SetFloat(WaterTime, animationTime);
             var previous = RenderTexture.active;
             try { Graphics.Blit(null, texture, material, 0); }
             finally { RenderTexture.active = previous; }
             lastFrame = frame;
             lastView = trayView;
+            lastZoom = zoom;
         }
 
         public void Dispose()

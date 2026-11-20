@@ -59,8 +59,9 @@ Button.selected { border-color: #cfbc89; background-color: #405b4e; }
 .tool-caption { font-size: 11px; padding: 0; margin: 0; }
 .rake-patterns Button { min-height: 32px; font-size: 12px; }
 
-.menu, .release { position: absolute; margin: 0; padding: 2px 11px; border-color: var(--rim); border-radius: 11px; background-color: var(--panel); }
+.menu, .release, .studio-back { position: absolute; margin: 0; padding: 2px 11px; border-color: var(--rim); border-radius: 11px; background-color: var(--panel); }
 .menu { right: 0; top: 0; }
+.studio-back { right: 64px; top: 0; }
 .release { left: 0; top: 86px; background-color: #dac18c; color: #192b24; }
 .release:hover, .release:active { background-color: #eed7a5; }
 .settings { position: absolute; right: 0; top: 44px; width: 126px; padding: 3px; }
@@ -80,7 +81,7 @@ Button.selected { border-color: #cfbc89; background-color: #405b4e; }
 .wide.compact .palette Button, .wide.compact .tools Button { min-height: 22px; margin: 1px; }
 .wide.compact .swatch-chip { width: 14px; height: 14px; margin-bottom: 1px; font-size: 9px; }
 .wide.compact .tool-icon { height: 12px; }
-.wide.compact .menu { min-height: 30px; }
+.wide.compact .menu, .wide.compact .studio-back { min-height: 30px; }
 
 .dialog-overlay { background-color: rgba(12, 25, 22, 0.7); align-items: center; justify-content: center; }
 .dialog-card { width: 86%; max-width: 340px; padding: 15px; }

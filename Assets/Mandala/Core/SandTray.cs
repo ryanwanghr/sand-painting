@@ -12,7 +12,8 @@ namespace Mandala.Game
         public const int ReferenceSize = 440, Size = 880, Levels = 24, CellCount = Size * Size, ColorCount = 5;
         // Distances are in cells; each layer occupies 1 / AreaScale of its former area.
         public const int GridScale = Size / ReferenceSize, AreaScale = GridScale * GridScale;
-        public const float PourRadius = 12 * GridScale;
+        public const float PourRadius = 4 * GridScale;
+        const float PourLift = 10 * GridScale;
         const int TrayInset = 2 * GridScale;
         const int SettleTileSize = 16 * GridScale, SettleTiles = (Size + SettleTileSize - 1) / SettleTileSize;
         const int LipHeight = 3;
@@ -60,7 +61,26 @@ namespace Mandala.Game
             new Vector2Int(0, 1), new Vector2Int(1, 2), new Vector2Int(1, 1), new Vector2Int(2, 1)
         };
 
-        public struct Grain { public int Cell, Color; public float Lift, Velocity, Age; public uint Id; }
+        public struct Grain
+        {
+            public int Cell, Color;
+            public float Lift, Velocity, Age;
+            public uint Id;
+            public Vector2? Outlet;
+
+            public Vector2 Position
+            {
+                get
+                {
+                    var landing = new Vector2(Cell % Size + .5f, Cell / Size + .5f);
+                    if (!Outlet.HasValue) return landing - Vector2.up * Lift;
+                    Vector2 start = Outlet.Value;
+                    float fall = Mathf.Clamp01(1 - Lift / PourLift);
+                    return new Vector2(Mathf.Lerp(start.x, landing.x, fall * fall),
+                        Mathf.Lerp(start.y, landing.y, fall));
+                }
+            }
+        }
         public struct RollingGrain
         {
             public int Source, Target, Color;
@@ -81,15 +101,18 @@ namespace Mandala.Game
             public bool Protection, HasWon;
         }
 
-        public SandTray(int seed = 1)
+        public SandTray(int seed = 1) : this(seed, null) { }
+
+        internal SandTray(int seed, sbyte[] guide)
         {
             random = new System.Random(seed);
             for (int i = 0; i < CellCount; i++)
             {
-                Guide[i] = GuideColor(i % Size, i / Size, Size);
+                Guide[i] = guide != null ? guide[i] : GuideColor(i % Size, i / Size, Size);
                 exposureColor[i] = -1;
                 if (Guide[i] >= 0) TargetCount++;
             }
+            AddGuideLips();
         }
         internal static sbyte GuideColor(int x, int y, int size)
         {
@@ -122,25 +145,21 @@ namespace Mandala.Game
         }
         public int DisplayTop(int i) => DisplayColor(i, Top(i));
         bool VacuumProtected(int cell) => Protection && Completed[cell] && Guide[cell] >= 0;
-        bool VacuumProtected(Vector2 position)
-        {
-            int x = Mathf.FloorToInt(position.x), y = Mathf.FloorToInt(position.y);
-            return x >= 0 && y >= 0 && x < Size && y < Size && VacuumProtected(y * Size + x);
-        }
         public void CompleteSection(List<int> cells)
         {
-            foreach (int cell in cells)
-            {
-                Completed[cell] = true;
-                AddSectionLips(cell);
-            }
+            foreach (int cell in cells) Completed[cell] = true;
             Changes++;
+        }
+
+        void AddGuideLips()
+        {
+            for (int cell = 0; cell < CellCount; cell++)
+                if (Guide[cell] >= 0) AddSectionLips(cell);
         }
 
         void AddSectionLips(int cell)
         {
             int color = Guide[cell];
-            if (color < 0) return;
             int x = cell % Size, y = cell / Size;
             Add(x + 1, y, cell, EastLip);
             Add(x - 1, y, cell - 1, EastLip);
@@ -260,7 +279,7 @@ namespace Mandala.Game
             for (int n = 0; n < Grains.Count; n++)
             {
                 var grain = Grains[n];
-                grain.Color = DisplayColor(new Vector2(grain.Cell % Size + .5f, grain.Cell / Size + .5f - grain.Lift), grain.Color);
+                grain.Color = DisplayColor(grain.Position, grain.Color);
                 Grains[n] = grain;
             }
             for (int n = 0; n < RollingGrains.Count; n++)
@@ -306,7 +325,7 @@ namespace Mandala.Game
         // Rolling grains are material in transit; airborne pour grains are counted separately.
         public int Mass() { int n = RollingGrains.Count; foreach (byte h in Heights) n += h; return n; }
         public void EndStroke() { sweepCredit = 0; rakeHeading = false; activeVacuum = false; }
-        public int Apply(SandTool tool, Vector2 from, Vector2 to, float radius, int color, float dt)
+        public int Apply(SandTool tool, Vector2 from, Vector2 to, float radius, int color, float dt, Vector2? outletOffset = null)
         {
             if (dt <= 0 || radius <= 0) return 0;
             activeVacuum = tool == SandTool.Vacuum;
@@ -320,7 +339,8 @@ namespace Mandala.Game
             candidates.Clear();
             Vector2 movement = to - from;
             float lengthSq = movement.sqrMagnitude;
-            float pourRate = 4.5f * (16 * 16 * AreaScale) / (radius * radius);
+            // Normalize the incoming flow by footprint area. Full columns can still reject grains.
+            float pourRate = 6.75f * (16 * 16 * AreaScale) / (radius * radius);
             int minX = Mathf.Max(TrayInset, Mathf.FloorToInt(Mathf.Min(from.x, to.x) - radius));
             int maxX = Mathf.Min(Size - TrayInset - 1, Mathf.FloorToInt(Mathf.Max(from.x, to.x) + radius));
             int minY = Mathf.Max(TrayInset, Mathf.FloorToInt(Mathf.Min(from.y, to.y) - radius));
@@ -331,7 +351,8 @@ namespace Mandala.Game
                 if (!Playable(x, y)) continue;
                 Vector2 delta = new Vector2(x + .5f, y + .5f) - from;
                 float t = lengthSq > 0 ? Vector2.Dot(delta, movement) / lengthSq : 0;
-                if ((delta - movement * Mathf.Clamp01(t)).sqrMagnitude > radius * radius) continue;
+                float nearest = Mathf.Clamp01(t);
+                if ((delta - movement * nearest).sqrMagnitude > radius * radius) continue;
                 int i = y * Size + x;
                 if (tool == SandTool.Vacuum)
                 {
@@ -354,7 +375,7 @@ namespace Mandala.Game
                 }
                 // The radial profile averages one over the disk: a fuller center with a feathered fringe.
                 float density = .2f + 1.6f * Mathf.Clamp01(1 - meanDistanceSq / (radius * radius));
-                exposure[i] += dt * contact * pourRate * density; // Fixed stream volume, independent of footprint area.
+                exposure[i] += dt * contact * pourRate * density;
                 while (exposure[i] >= nextEmission[i])
                 {
                     nextEmission[i] = Mathf.Floor(nextEmission[i]) + 1.05f + (float)random.NextDouble() * .9f;
@@ -363,19 +384,20 @@ namespace Mandala.Game
                         (pending[i] != 0 || !CanReplaceFullTop(i, color, Heights, Layers))) continue;
                     pending[i]++;
                     WakeSettling(i);
-                    Grains.Add(new Grain { Cell = i, Color = color, Lift = 10 * GridScale, Velocity = 40 * GridScale, Id = nextGrainId++ }); activity++;
+                    Grains.Add(new Grain { Cell = i, Color = color, Lift = PourLift, Velocity = 40 * GridScale,
+                        Id = nextGrainId++, Outlet = from + movement * nearest + outletOffset }); activity++;
                 }
             }
             if (tool == SandTool.Vacuum)
             {
                 int budget = Mathf.CeilToInt(dt * (7200 * AreaScale));
-                // Moving surface grains belong to the material being vacuumed too.
+                // Rolling sand is removable anywhere the vacuum passes.
                 for (int n = RollingGrains.Count - 1; n >= 0 && activity < budget; n--)
                 {
                     var rolling = RollingGrains[n];
                     Vector2 offset = rolling.Position - from;
                     float along = lengthSq > 0 ? Mathf.Clamp01(Vector2.Dot(offset, movement) / lengthSq) : 0;
-                    if ((offset - movement * along).sqrMagnitude > radius * radius || VacuumProtected(rolling.Position)) continue;
+                    if ((offset - movement * along).sqrMagnitude > radius * radius) continue;
                     pending[rolling.Target]--; rollingFrom[rolling.Source] = false;
                     WakeSettling(rolling.Target); WakeSettling(rolling.Source);
                     RollingGrains[n] = RollingGrains[RollingGrains.Count - 1]; RollingGrains.RemoveAt(RollingGrains.Count - 1);
@@ -696,8 +718,8 @@ namespace Mandala.Game
             Array.Clear(lips, 0, lips.Length); lipCount = 0;
             if (state.Protection)
             {
-                // Painting lips are always intact. Rebuild them so older paintings gain shared-color lips.
-                for (int i = 0; i < CellCount; i++) if (Completed[i]) AddSectionLips(i);
+                // Painting lips follow the full guide, including sections unfinished in older saves.
+                AddGuideLips();
             }
             else if (state.Lips != null)
             {
